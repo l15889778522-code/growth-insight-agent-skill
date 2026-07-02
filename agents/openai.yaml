@@ -1,0 +1,7 @@
+interface:
+  display_name: "GrowthInsight Agent"
+  short_description: "Multi-agent data analysis workflow"
+  default_prompt: "Use $growth-insight-agent to analyze a business metric problem with staged agent review."
+policy:
+  allow_implicit_invocation: true
+
