@@ -1,131 +1,27 @@
-# Workflow
+# Sequential Workflow
 
-Use this workflow for every analysis request unless the user explicitly asks for a narrower task.
+The root task is an orchestrator, not an analysis agent. It creates seven visible subagent threads sequentially.
 
-## Stage 0: Requirement Capture
+| Stage | Custom agent type | Required input | Output file |
+|---|---|---|---|
+| 1 | `growth-business` | Original request and source context | `01_business_analysis.md` |
+| 2 | `growth-metrics` | Stage 1 report and schema context | `02_metrics_framework.md` |
+| 3 | `growth-sql` | Stages 1-2 reports and data source context | `03_sql_analysis.md` |
+| 4 | `growth-insight` | Stages 1-3 reports and query results, if available | `04_insights.md` |
+| 5 | `growth-visualization` | Stages 1-4 reports | `05_visualization_plan.md` |
+| 6 | `growth-review` | Stages 1-5 reports | `06_review_report.md` |
+| 7 | `growth-report` | Stages 1-6 reports | `07_final_report.md` |
 
-Record:
+For each stage:
 
-- Original user request
-- Business context provided by the user
-- Available data sources
-- Whether mock schema, uploaded schema, or live database access will be used
-- Known constraints and non-goals
+1. Spawn the named custom agent.
+2. Wait for completion.
+3. Check the expected output file and `HANDOFF_READY` marker.
+4. Send one correction message if the contract was not met.
+5. Record the handoff summary.
+6. Close the agent.
+7. Include the report path and summary in the next agent's prompt.
 
-Output target:
+Do not spawn later stages early. The purpose is traceable report-to-report handoff, not parallel analysis.
 
-```text
-docs/00_requirement.md
-```
-
-## Stage 1: Business Understanding
-
-Business Agent should produce:
-
-- Business background
-- Core business question
-- Analysis objective
-- Analysis population
-- Analysis time window
-- Key dimensions
-- Assumptions
-- Open questions
-- Non-goals
-
-Stop and ask the user to confirm before continuing.
-
-## Stage 2: Metric Framework
-
-Metrics Agent should produce an initial metric table.
-
-Every metric should include:
-
-- Metric name
-- Metric type
-- Formula
-- Business meaning
-- Analysis dimensions
-- Required fields
-- Required tables
-- Whether it is required or optional
-- Risk notes
-
-Stop and allow user edits:
-
-- Add metric
-- Edit metric
-- Delete metric
-- Confirm final metric framework
-
-After edits, rewrite the metric table as the final confirmed metric framework.
-
-## Stage 3: SQL Analysis
-
-SQL Agent should:
-
-- Read the confirmed metric framework.
-- Read mock schema, uploaded schema, or inspected database schema.
-- Check whether required fields exist.
-- Generate SQL for each measurable metric or analysis path.
-- Explain purpose, filters, joins, grouping, and risks.
-- Validate SQL with `scripts/sql_guard.py`.
-
-Stop before live query execution.
-
-## Stage 4: Insights
-
-Insight Agent should produce:
-
-- Findings, if query results are available
-- Hypotheses, if query results are not available
-- Dimension drill-down paths
-- Verification methods
-- Business interpretations
-- Recommended next analysis
-
-Stop and ask for confirmation.
-
-## Stage 5: Visualization Plan
-
-Visualization Agent should produce:
-
-- Chart list
-- Chart type
-- Target metric
-- Dimensions
-- Question answered by the chart
-- Suggested layout order
-- Caveats
-
-Stop and ask for confirmation.
-
-## Stage 6: Review
-
-Review Agent should produce:
-
-- Pass, conditional pass, or fail
-- P0/P1/P2/P3 issues
-- Metric consistency review
-- SQL risk review
-- Data quality review
-- Missing dimension review
-- Report readiness recommendation
-
-Stop and ask for confirmation.
-
-## Stage 7: Final Report
-
-Main Agent synthesizes the final report only after review confirmation.
-
-Use:
-
-```text
-assets/final-report-template.md
-```
-
-Output target:
-
-```text
-docs/07_final_report.md
-```
-
+The app exposes each subagent thread in the task's agent activity. The exact placement may vary by Codex app version; these are subagent threads rather than seven unrelated top-level projects.

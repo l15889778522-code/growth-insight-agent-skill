@@ -1,115 +1,64 @@
 ---
-name: growth-insight-agent
-description: Multi-agent data analysis workflow for Codex. Use when the user asks for business data analysis, metric framework design, SQL analysis, root-cause hypotheses, visualization planning, final analysis reports, or wants a staged data analysis team process with user confirmation gates and optional mock schema or read-only database access.
+name: growth-insight-agent-skill
+description: Run a visible, sequential multi-agent growth analysis pipeline. Use when the user explicitly invokes this skill to have separate Business, Metrics, SQL, Insight, Visualization, Review, and Report agents produce Markdown reports and pass each completed report to the next agent.
 ---
 
-# GrowthInsight Agent
+# Growth Insight Multi-Agent Pipeline
 
-Use this skill to simulate a data analysis team inside Codex.
+Act only as the root orchestrator. Do not simulate the seven roles in the root thread.
 
-The skill turns a business analysis request into a staged, reviewable workflow:
+## Required behavior
 
-1. Business understanding
-2. Metric framework design
-3. SQL analysis
-4. Insight and root-cause hypotheses
-5. Visualization planning
-6. Review and risk assessment
-7. Final report synthesis
+1. Read `references/workflow.md`, `references/agent-roles.md`, and `references/handoff-contract.md`.
+2. Confirm that the user supplied an analysis question, dataset, schema, query result, or file. Ask only for an input that is truly required to begin.
+3. Create `growth-insight-runs/<YYYYMMDD-HHMMSS>/` under the current project.
+4. Spawn exactly one subagent at a time in this order:
+   - `growth-business`
+   - `growth-metrics`
+   - `growth-sql`
+   - `growth-insight`
+   - `growth-visualization`
+   - `growth-review`
+   - `growth-report`
+5. Wait for the current subagent to finish before spawning the next one. Never run pipeline stages in parallel.
+6. Give every subagent the original request, available data paths, required prior reports, exact output path, and the handoff contract.
+7. Verify that the expected report exists and the subagent returned `HANDOFF_READY`. If either is missing, send one corrective follow-up to the same subagent. Stop and report the failed stage if the correction also fails.
+8. Capture the result and close the completed subagent before starting the next stage. Completed agent threads remain inspectable in the app.
+9. Pass the prior report path and handoff summary explicitly to the next subagent. Do not rely on shared conversational memory.
+10. After `growth-report` finishes, link all seven reports and summarize the final recommendation.
 
-This is not a data warehouse, ETL, BI platform, or dashboard builder skill. Do not design ODS/DWD/DWS/ADS layers, ETL pipelines, login systems, permission systems, or enterprise BI infrastructure unless the user explicitly asks.
+## Output files
 
-## Required Behavior
+- `01_business_analysis.md`
+- `02_metrics_framework.md`
+- `03_sql_analysis.md`
+- `04_insights.md`
+- `05_visualization_plan.md`
+- `06_review_report.md`
+- `07_final_report.md`
 
-Pause after every stage and wait for user confirmation before continuing.
+## Pause conditions
 
-Accept these user responses at each gate:
+Run automatically without confirmation between ordinary stages. Pause only when:
 
-- `继续` or `确认，进入下一步`: proceed.
-- `修改：...`: revise the current stage.
-- `补充：...`: merge user context into the current stage.
-- `重新生成这一阶段`: regenerate the current stage.
-- `跳过当前阶段`: skip only if the skipped stage is not required for safety.
+- essential source data is missing and no honest assumption permits progress;
+- a live database query or another external write is required;
+- credentials, elevated access, or a destructive operation would be required;
+- the Review Agent returns `FAIL` and a correction would materially change a user-confirmed business definition.
 
-At the metric stage, also accept:
+Never execute live SQL without explicit user approval. SQL generation and review may continue without execution. Validate proposed SQL with `scripts/sql_guard.py`.
 
-- `新增指标：...`
-- `修改指标：...`
-- `删除指标：...`
-- `确认最终指标体系`
+## Resources
 
-Never continue to the next role until the current role's output has been shown and confirmed.
+- Pipeline order: `references/workflow.md`
+- Agent contracts: `references/agent-roles.md`
+- Handoff format: `references/handoff-contract.md`
+- Metric rules: `references/metric-framework.md`
+- SQL rules: `references/sql-standards.md`
+- Database setup: `references/database-connectors.md`
+- Final report format: `references/report-template.md`
+- Custom agent installer: `scripts/install_custom_agents.ps1`
 
-## Quick Workflow
+## Fallback
 
-1. Capture the user's request in `docs/00_requirement.md` when writing project artifacts.
-2. Run Business Agent and show `docs/01_business_analysis.md`.
-3. Wait for confirmation.
-4. Run Metrics Agent and show `docs/02_metrics_framework.md`.
-5. Wait for confirmation, allowing metric additions, edits, and deletions.
-6. Run SQL Agent using the final confirmed metrics and available schema/database context.
-7. Validate SQL safety with `scripts/sql_guard.py` before suggesting live execution.
-8. Wait for confirmation before any live database query.
-9. Run Insight Agent and show `docs/04_insights.md`.
-10. Wait for confirmation.
-11. Run Visualization Agent and show `docs/05_visualization_plan.md`.
-12. Wait for confirmation.
-13. Run Review Agent and show `docs/06_review_report.md`.
-14. Wait for confirmation.
-15. Synthesize `docs/07_final_report.md`.
-
-## Resource Navigation
-
-Read only the reference files needed for the current stage:
-
-- Stage flow and confirmation rules: `references/workflow.md`
-- Agent responsibilities and output contracts: `references/agent-roles.md`
-- Metric design rules: `references/metric-framework.md`
-- SQL safety and query standards: `references/sql-standards.md`
-- Mock schema and database connection guidance: `references/database-connectors.md`
-- Final report structure: `references/report-template.md`
-
-Use scripts when deterministic checks are useful:
-
-- `scripts/sql_guard.py`: validate that SQL is read-only before execution.
-- `scripts/inspect_schema.py`: inspect SQLite/MySQL schema from environment configuration.
-- `scripts/test_db_connection.py`: test database connectivity without running analysis queries.
-- `scripts/run_readonly_query.py`: execute a read-only query after user confirmation.
-
-Use `assets/final-report-template.md` when creating the final report.
-
-## Database Rules
-
-Default to mock schema or user-provided schema when no database is configured.
-
-For real databases:
-
-- Treat all live database access as read-only.
-- Never print secrets.
-- Never write credentials into skill files.
-- Prefer read replicas or analytics databases over production OLTP databases.
-- Ask for explicit user confirmation before executing any query.
-- Refuse or rewrite SQL that includes write, DDL, permission, or destructive statements.
-
-Allowed SQL statement starts:
-
-- `SELECT`
-- `WITH`
-- `SHOW`
-- `DESCRIBE`
-- `EXPLAIN`
-
-Blocked SQL includes:
-
-- `INSERT`
-- `UPDATE`
-- `DELETE`
-- `DROP`
-- `ALTER`
-- `CREATE`
-- `TRUNCATE`
-- `REPLACE`
-- `MERGE`
-- `GRANT`
-- `REVOKE`
-
+If the named custom agent types are unavailable, stop and tell the user to run `scripts/install_custom_agents.ps1` and restart Codex. Do not silently collapse the workflow into one agent.

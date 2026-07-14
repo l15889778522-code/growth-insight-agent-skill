@@ -1,7 +1,7 @@
 interface:
-  display_name: "GrowthInsight Agent"
-  short_description: "Multi-agent data analysis workflow"
-  default_prompt: "Use $growth-insight-agent to analyze a business metric problem with staged agent review."
-policy:
-  allow_implicit_invocation: true
+  display_name: "Growth Insight Multi-Agent"
+  short_description: "Seven-agent sequential growth analysis pipeline"
+  default_prompt: "Use $growth-insight-agent-skill to analyze my data request. Spawn all seven agents sequentially, save each stage report, and pass it to the next agent."
 
+policy:
+  allow_implicit_invocation: false
