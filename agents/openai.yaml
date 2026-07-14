@@ -1,7 +1,7 @@
 interface:
   display_name: "Growth Insight Multi-Agent"
-  short_description: "Seven-agent sequential growth analysis pipeline"
-  default_prompt: "Use $growth-insight-agent-skill to analyze my data request. Spawn all seven agents sequentially, save each stage report, and pass it to the next agent."
+  short_description: "Seven-agent analysis with approval gates"
+  default_prompt: "Use $growth-insight-agent-skill to analyze my data request. Start only the first agent, show me its report, and wait for my explicit confirmation before starting each next agent."
 
 policy:
   allow_implicit_invocation: false

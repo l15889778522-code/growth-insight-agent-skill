@@ -5,6 +5,7 @@ Every stage report must end with this block:
 ```text
 ## Handoff
 - stage_status: PASS | PASS_WITH_RISKS | BLOCKED | FAIL
+- approval_status: awaiting_user_confirmation
 - confirmed_decisions:
 - assumptions:
 - evidence_used:
@@ -31,3 +32,5 @@ Rules:
 - Never silently change a confirmed definition. Record proposed changes as risks or open questions.
 - Separate facts, calculated results, assumptions, and hypotheses.
 - Never claim a query ran unless execution evidence is available.
+- A completed handoff proposes the next agent but does not authorize starting it.
+- The root orchestrator must show the report to the user and wait for a new explicit confirmation message.

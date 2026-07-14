@@ -1,8 +1,8 @@
 # Growth Insight Multi-Agent Skill
 
-This Codex skill runs a real sequential subagent workflow for growth and business data analysis.
+This Codex skill runs a real human-gated subagent workflow for growth and business data analysis.
 
-It does not ask one model to imitate several roles. The root task starts seven custom agent threads in order, and every agent writes a Markdown report that becomes explicit input to the next agent:
+It does not ask one model to imitate several roles. The root task starts one custom agent at a time. Every agent writes a Markdown report, then the workflow pauses until the user approves that report before it becomes input to the next agent:
 
 1. Business understanding
 2. Metric framework
@@ -27,10 +27,17 @@ Restart Codex after installation. Custom agents are loaded from `~/.codex/agents
 Attach a dataset, schema, query result, or business question and invoke:
 
 ```text
-$growth-insight-agent-skill 分析这份数据，依次启动全部 7 个 Agent，并把每一步报告传给下一个 Agent。
+$growth-insight-agent-skill 分析这份数据。每个 Agent 完成后先展示报告并暂停，只有我回复“确认，进入下一步”才启动下一个 Agent。
 ```
 
 The agent threads appear in Codex's subagent activity for the task. Their exact UI placement depends on the Codex app version; they are inspectable subagent threads, not seven unrelated projects.
+
+At every gate, use one of these commands:
+
+- `确认，进入下一步` or `继续`
+- `修改：...` or `补充：...`
+- `重新生成当前阶段`
+- `终止分析`
 
 ## Outputs
 
