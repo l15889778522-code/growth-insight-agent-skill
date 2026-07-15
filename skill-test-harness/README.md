@@ -1,6 +1,6 @@
 # Skill Test Harness
 
-This subproject is used to test GrowthInsight Agent Skill before it is packaged as a formal Codex skill.
+This subproject is used to test 多Agent数据分析Skill before it is packaged as a formal Codex skill.
 
 It focuses on workflow correctness rather than UI or production database integration.
 

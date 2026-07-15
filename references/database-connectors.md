@@ -1,6 +1,6 @@
 # Database Connectors
 
-GrowthInsight Agent supports three data context modes.
+多Agent数据分析Skill supports three data context modes.
 
 ## Mode 1: Mock Schema
 
@@ -79,4 +79,3 @@ python scripts/run_readonly_query.py --db mysql --sql-file query.sql
 - Prefer read replicas.
 - Keep result row limits small.
 - Do not include raw sensitive rows in final reports.
-

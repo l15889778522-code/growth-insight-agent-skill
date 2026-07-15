@@ -113,7 +113,7 @@ def read_sql(args: argparse.Namespace) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate read-only SQL for GrowthInsight Agent.")
+    parser = argparse.ArgumentParser(description="Validate read-only SQL for Multi-Agent Data Analysis Skill.")
     parser.add_argument("path", nargs="?", help="Path to a SQL file.")
     parser.add_argument("--sql", help="SQL string to validate.")
     parser.add_argument("--sql-file", help="Path to a SQL file.")
@@ -133,4 +133,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

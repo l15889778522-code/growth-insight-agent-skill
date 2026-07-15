@@ -1,7 +1,7 @@
 interface:
-  display_name: "Growth Insight Multi-Agent"
-  short_description: "Seven-agent analysis with approval gates"
-  default_prompt: "Use $growth-insight-agent-skill to analyze my data request. Start only the first agent, show me its report, and wait for my explicit confirmation before starting each next agent."
+  display_name: "多Agent数据分析Skill"
+  short_description: "七个独立 Agent 串行协作并逐步人工确认的数据分析流程"
+  default_prompt: "使用 $multi-agent-data-analysis-skill 分析我的数据需求。只启动第一个 Agent，展示报告并等待我明确确认后再启动下一个 Agent。"
 
 policy:
   allow_implicit_invocation: false

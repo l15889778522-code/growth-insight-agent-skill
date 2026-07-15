@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Shared database helpers for GrowthInsight Agent scripts."""
+"""Shared database helpers for Multi-Agent Data Analysis Skill scripts."""
 
 from __future__ import annotations
 
@@ -72,4 +72,3 @@ def connect(config: DbConfig) -> Any:
         )
 
     raise SystemExit(f"Unsupported DB_TYPE: {config.db_type}")
-

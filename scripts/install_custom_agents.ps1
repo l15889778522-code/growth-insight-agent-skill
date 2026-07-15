@@ -26,4 +26,4 @@ if ($installed.Count -eq 0) {
 
 Write-Output "Installed $($installed.Count) custom agents to $destinationPath"
 $installed | ForEach-Object { Write-Output "- $_" }
-Write-Output 'Restart Codex before invoking $growth-insight-agent-skill.'
+Write-Output 'Restart Codex before invoking $multi-agent-data-analysis-skill.'

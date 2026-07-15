@@ -1,6 +1,6 @@
 # Workflow Checklist
 
-Use this checklist to manually validate a GrowthInsight Agent Skill run.
+Use this checklist to manually validate a 多Agent数据分析Skill run.
 
 ## Stage Gates
 

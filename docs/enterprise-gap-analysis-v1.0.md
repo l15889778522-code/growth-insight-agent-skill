@@ -1,6 +1,6 @@
 # Enterprise Gap Analysis v1.0
 
-This document reviews GrowthInsight Agent Skill from the perspective of an enterprise data, product, and engineering team.
+This document reviews 多Agent数据分析Skill from the perspective of an enterprise data, product, and engineering team.
 
 ## 1. Product Scope Gaps
 

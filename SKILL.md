@@ -1,9 +1,9 @@
 ---
-name: growth-insight-agent-skill
-description: Run a visible, human-gated multi-agent growth analysis pipeline. Use when the user explicitly invokes this skill to have separate Business, Metrics, SQL, Insight, Visualization, Review, and Report agents produce Markdown reports, pause for user approval after every stage, and pass each approved report to the next agent.
+name: multi-agent-data-analysis-skill
+description: Run a visible, human-gated multi-agent data analysis pipeline. Use when the user explicitly invokes this skill to have separate Business, Metrics, SQL, Insight, Visualization, Review, and Report agents produce Markdown reports, pause for user approval after every stage, and pass each approved report to the next agent.
 ---
 
-# Growth Insight Multi-Agent Pipeline
+# 多Agent数据分析Skill
 
 Act only as the root orchestrator. Do not simulate the seven roles in the root thread.
 
@@ -11,7 +11,7 @@ Act only as the root orchestrator. Do not simulate the seven roles in the root t
 
 1. Read `references/workflow.md`, `references/agent-roles.md`, and `references/handoff-contract.md`.
 2. Confirm that the user supplied an analysis question, dataset, schema, query result, or file. Ask only for an input that is truly required to begin.
-3. Create `growth-insight-runs/<YYYYMMDD-HHMMSS>/` under the current project.
+3. Create `multi-agent-data-analysis-runs/<YYYYMMDD-HHMMSS>/` under the current project.
 4. Spawn exactly one subagent per user-confirmed stage in this order:
    - `growth-business`
    - `growth-metrics`
