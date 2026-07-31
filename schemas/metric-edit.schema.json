@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "edit_id", "run_id", "stage_id", "operation", "metric_id", "requested_changes", "user_text", "base_artifact_sha256", "created_at"],
+  "properties": {
+    "schema_version": {"const": "1.1"},
+    "edit_id": {"type": "string", "minLength": 3},
+    "run_id": {"type": "string", "minLength": 3},
+    "stage_id": {"type": "string", "minLength": 1},
+    "operation": {"enum": ["add", "modify", "delete"]},
+    "metric_id": {"type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]+$"},
+    "requested_changes": {"type": "object"},
+    "user_text": {"type": "string", "minLength": 1},
+    "base_artifact_sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
+    "created_at": {"type": "string", "format": "date-time"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"operation": {"enum": ["add", "modify"]}}},
+      "then": {"properties": {"requested_changes": {"minProperties": 1}}},
+      "else": {"properties": {"requested_changes": {"maxProperties": 0}}}
+    }
+  ]
+}

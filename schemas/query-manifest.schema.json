@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "query_id", "data_source_type", "data_source_id", "data_source_fingerprint", "sql_sha256", "dialect", "started_at", "completed_at", "elapsed_ms", "timeout_seconds", "max_rows", "max_result_bytes", "returned_rows", "columns", "result_path", "result_bytes", "result_sha256", "profile_path", "profile_sha256", "truncated", "sampled", "quality_warnings"],
+  "properties": {
+    "schema_version": {"const": "1.1"},
+    "query_id": {"type": "string"},
+    "data_source_type": {"type": "string"},
+    "data_source_id": {"type": "string"},
+    "data_source_fingerprint": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
+    "sql_sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
+    "dialect": {"type": "string"},
+    "started_at": {"type": "string", "format": "date-time"},
+    "completed_at": {"type": "string", "format": "date-time"},
+    "elapsed_ms": {"type": "integer", "minimum": 0},
+    "timeout_seconds": {"type": "integer", "minimum": 1},
+    "max_rows": {"type": "integer", "minimum": 1},
+    "max_result_bytes": {"type": "integer", "minimum": 1024},
+    "returned_rows": {"type": "integer", "minimum": 0},
+    "columns": {"type": "array", "items": {"type": "object", "required": ["name", "type", "null_count", "distinct_count", "minimum", "maximum"], "properties": {"name": {"type": "string"}, "type": {"type": "string"}, "null_count": {"type": "integer", "minimum": 0}, "distinct_count": {"type": "integer", "minimum": 0}, "minimum": {"type": ["number", "string", "null"]}, "maximum": {"type": ["number", "string", "null"]}}, "additionalProperties": false}},
+    "result_path": {"type": "string", "minLength": 1},
+    "result_bytes": {"type": "integer", "minimum": 0},
+    "result_sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
+    "profile_path": {"type": "string", "minLength": 1},
+    "profile_sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
+    "truncated": {"type": "boolean"},
+    "sampled": {"type": "boolean"},
+    "quality_warnings": {"type": "array", "items": {"type": "string"}}
+  }
+}

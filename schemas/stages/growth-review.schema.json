@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "allOf": [
+    {"$ref": "../handoff.schema.json"},
+    {
+      "type": "object",
+      "properties": {
+        "role": {"const": "growth-review"},
+        "role_payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["decision", "findings", "required_fixes", "optional_improvements", "rollback_stage", "lineage_breaks"],
+          "properties": {
+            "decision": {"enum": ["PASS", "PASS_WITH_RISKS", "FAIL"]},
+            "findings": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["finding_id", "severity", "summary", "evidence_refs", "responsible_stage"],
+                "properties": {
+                  "finding_id": {"type": "string", "minLength": 1},
+                  "severity": {"enum": ["P0", "P1", "P2", "P3"]},
+                  "summary": {"type": "string", "minLength": 1},
+                  "evidence_refs": {"type": "array", "items": {"type": "string"}, "minItems": 1, "uniqueItems": true},
+                  "responsible_stage": {"type": ["string", "null"]}
+                }
+              }
+            },
+            "required_fixes": {"type": "array", "items": {"type": "string"}},
+            "optional_improvements": {"type": "array", "items": {"type": "string"}},
+            "rollback_stage": {"type": ["string", "null"]},
+            "lineage_breaks": {"type": "array", "items": {"type": "string"}}
+          }
+        }
+      }
+    }
+  ]
+}

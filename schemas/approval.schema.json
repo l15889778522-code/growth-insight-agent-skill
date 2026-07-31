@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.multi-agent-data-analysis/schemas/approval.schema.json",
+  "title": "Workflow Approval",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "approval_id", "approval_type", "run_id", "route_revision", "subject_id", "subject_revision", "subject_sha256", "action", "user_text", "created_at", "idempotency_key"],
+  "properties": {
+    "schema_version": {"const": "1.1"},
+    "approval_id": {"type": "string", "minLength": 3},
+    "approval_type": {"enum": ["route", "stage", "query", "rollback"]},
+    "run_id": {"type": "string", "minLength": 3},
+    "route_revision": {"type": "integer", "minimum": 1},
+    "subject_id": {"type": "string", "minLength": 1},
+    "subject_revision": {"type": "integer", "minimum": 1},
+    "subject_sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
+    "action": {"enum": ["confirm_route", "approve_stage", "execute_query", "approve_rollback"]},
+    "user_text": {"type": "string", "minLength": 1},
+    "created_at": {"type": "string", "format": "date-time"},
+    "idempotency_key": {"type": "string", "minLength": 8},
+    "carried_from_approval_id": {"type": ["string", "null"]},
+    "query": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["query_sha256", "data_source_id", "data_source_fingerprint", "dialect", "timeout_seconds", "max_rows", "max_result_bytes"],
+      "properties": {
+        "query_sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
+        "data_source_id": {"type": "string", "minLength": 1},
+        "data_source_fingerprint": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
+        "dialect": {"type": "string", "minLength": 1},
+        "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 3600},
+        "max_rows": {"type": "integer", "minimum": 1, "maximum": 1000000},
+        "max_result_bytes": {"type": "integer", "minimum": 1024, "maximum": 1073741824}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"approval_type": {"const": "query"}}},
+      "then": {"required": ["query"], "properties": {"query": {"type": "object"}}},
+      "else": {"properties": {"query": {"type": "null"}}}
+    }
+  ]
+}

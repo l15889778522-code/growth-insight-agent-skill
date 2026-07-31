@@ -1,44 +1,43 @@
 # Skill Test Harness
 
-This subproject is used to test 多Agent数据分析Skill before it is packaged as a formal Codex skill.
-
-It focuses on workflow correctness rather than UI or production database integration.
+This subproject exercises the v1.1 Codex-native multi-agent workflow before release. It validates the orchestration contract, not a production database or user interface.
 
 ## Test Goals
 
-- Verify that each agent stage produces a clear intermediate artifact.
-- Verify that the workflow pauses after each agent for user confirmation.
-- Verify that the metric stage supports user-added, edited, and deleted metrics.
-- Verify that SQL generation uses the final confirmed metric framework.
-- Verify that database-related SQL follows read-only safety rules.
-- Verify that the final report reflects all confirmed stage outputs.
+- Verify that the root task proposes and waits for approval of a dynamic route before spawning a role.
+- Verify that each selected role runs as a visible native child Agent and returns schema-valid JSON.
+- Verify that every Business-through-Review artifact is hash-bound and approved in a later user turn.
+- Verify that Metrics supports user-added, edited, and deleted metrics through new revisions.
+- Verify that SQL generation uses only the approved metric revision.
+- Verify that database execution has a separate, hash-bound query approval.
+- Verify that results, charts, lineage, review, and the final report remain traceable.
+- Verify that audit and recovery stop at the last legal stage boundary.
 
-## Test Flow
+## Full Diagnostic Flow
 
-Use the sample business request in `test-cases/new-user-retention-drop.md`.
+Use `test-cases/new-user-retention-drop.md` with `mock-schema/social-platform.md`. The expected route is the full diagnostic preset:
 
-Expected workflow:
-
-1. Business Agent creates a business problem decomposition.
-2. User confirms or revises the business decomposition.
-3. Metrics Agent creates an initial metric framework.
-4. User adds at least one custom metric.
-5. Metrics Agent merges the custom metric into the final metric framework.
-6. SQL Agent generates read-only SQL based on the final metric framework and `mock-schema/social-platform.md`.
-7. User confirms or revises the SQL direction.
-8. Insight Agent generates hypotheses and drill-down logic.
-9. Visualization Agent proposes charts and report structure.
-10. Review Agent identifies risks and gives a pass decision.
-11. Main Agent writes the final report.
+1. The root task creates and displays a route plan, then pauses.
+2. The user approves the exact route revision.
+3. Business runs, its artifact is displayed, and the workflow pauses.
+4. Metrics runs only after Business approval.
+5. The user adds the first-day follow-rate metric; Metrics creates a new revision and pauses again.
+6. SQL runs only after the revised Metrics artifact is approved.
+7. The SQL artifact is approved independently from any live query.
+8. If live data is used, the root task displays the complete query fingerprint and waits for explicit query approval.
+9. Insight, Visualization, and Review each run only after the prior artifact is approved.
+10. Report runs only after an approved Review result of `PASS` or `PASS_WITH_RISKS`.
+11. The completed run passes `runctl.py audit`, and its summary preserves artifact and runtime metadata.
 
 ## Pass Criteria
 
-The test passes if:
+- No role starts before route approval or its direct predecessor's approval.
+- No two roles are running at the same time.
+- The user-added metric appears in the approved metric revision and downstream SQL where applicable.
+- SQL is read-only, and a live query cannot run without an exact query approval.
+- Claims and charts use registered evidence; missing data remains explicitly unresolved.
+- Review checks metric consistency, SQL risks, missing dimensions, evidence quality, and data quality.
+- A Review failure produces an approval-gated rollback plan rather than a Report.
+- Repeated approvals are idempotent, and recovery does not duplicate a role attempt.
 
-- No stage proceeds before user confirmation.
-- The user-added metric appears in the final metric framework.
-- The SQL stage references the user-added metric where applicable.
-- SQL statements are read-only.
-- The review stage comments on metric consistency, SQL risks, missing dimensions, and data quality risks.
-- The final report includes business background, objective, metrics, SQL plan, insights, visualization plan, risks, review comments, and next steps.
-
+Use `checklists/workflow-checklist.md` to record the manual smoke result after restarting Codex with the v1.1 Agent definitions installed.

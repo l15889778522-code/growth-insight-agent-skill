@@ -1,0 +1,4 @@
+-r requirements.txt
+pytest>=8,<10
+coverage>=7,<8
+PyYAML>=6,<7

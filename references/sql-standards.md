@@ -1,78 +1,33 @@
 # SQL Standards
 
-## Safety
+## Deterministic Safety
 
-Validate SQL with:
+Validate one statement with `sqlglot` AST parsing:
 
-```bash
-python scripts/sql_guard.py path/to/query.sql
+```powershell
+python scripts/sql_guard.py query.sql --dialect mysql --max-rows 1000 --json
 ```
 
-or:
+Allow only query, SHOW, DESCRIBE, and EXPLAIN roots. Reject writes, DDL, transactions, grants, commands, `INTO`, locks, multiple statements, parse failures, unverifiable dynamic limits, MySQL executable comments, and risky side-effect functions such as `SLEEP`, `GET_LOCK`, and `LOAD_FILE`.
 
-```bash
-python scripts/sql_guard.py --sql "SELECT 1"
-```
+For query roots:
 
-Do not execute live SQL before user confirmation.
+- add `LIMIT max_rows + 1` when absent so the adapter can detect truncation while emitting at most `max_rows`;
+- reduce a numeric limit above that one-row sentinel bound;
+- warn when a table query has no WHERE filter;
+- use EXPLAIN or an explicit scan-risk warning before a potentially expensive query.
 
-## Allowed Statements
-
-- SELECT
-- WITH
-- SHOW
-- DESCRIBE
-- EXPLAIN
-
-## Blocked Statements
-
-- INSERT
-- UPDATE
-- DELETE
-- DROP
-- ALTER
-- CREATE
-- TRUNCATE
-- REPLACE
-- MERGE
-- GRANT
-- REVOKE
-- CALL
-- EXEC
+The SQL SHA-256 shown to the user must be calculated after safe rewriting. Any later SQL or limit change invalidates approval.
 
 ## Query Quality
 
-SQL should:
+- Use explicit date filters and aggregation grain.
+- Exclude test users when supported.
+- Exclude immature cohorts.
+- Avoid raw PII and unnecessary `SELECT *`.
+- Explain joins, denominator rules, null handling, and sample-size risks.
+- Never invent tables or fields.
 
-- Use explicit date filters.
-- Exclude test users when the schema supports it.
-- Avoid selecting raw PII.
-- Avoid `SELECT *` for analysis queries.
-- Use clear CTE names.
-- Include comments for non-obvious logic.
-- Explain joins and aggregation level.
-- Add `LIMIT` to exploratory detail queries.
+## Role Boundary
 
-## Schema Discipline
-
-Do not invent tables or fields.
-
-If required fields are missing:
-
-- State the gap.
-- Suggest a proxy metric if reasonable.
-- Ask the user whether to continue with assumptions.
-
-## Output Structure
-
-For each query provide:
-
-- Query name
-- Business purpose
-- SQL
-- Required tables
-- Required fields
-- Grain
-- Filters
-- Risks
-
+The SQL Agent proposes SQL only. The root prepares the final executable SQL, records the query request, waits for `确认执行查询：<sql_sha256>`, and invokes the deterministic runner.

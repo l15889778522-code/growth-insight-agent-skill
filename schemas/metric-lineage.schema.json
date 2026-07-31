@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "metrics"],
+  "properties": {
+    "schema_version": {"const": "1.1"},
+    "metrics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["metric_id", "metric_version", "definition_artifact", "sql_expressions", "result_columns", "insight_evidence", "chart_ids", "recommendation_refs", "breaks"],
+        "properties": {
+          "metric_id": {"type": "string", "minLength": 1},
+          "metric_version": {"type": "integer", "minimum": 1},
+          "definition_artifact": {"type": ["string", "null"]},
+          "sql_expressions": {"type": "array", "items": {"type": "string"}},
+          "result_columns": {"type": "array", "items": {"type": "string"}},
+          "insight_evidence": {"type": "array", "items": {"type": "string"}},
+          "chart_ids": {"type": "array", "items": {"type": "string"}},
+          "recommendation_refs": {"type": "array", "items": {"type": "string"}},
+          "breaks": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    }
+  }
+}

@@ -1,40 +1,84 @@
-# Sequential Workflow
+# Stateful Native-Agent Workflow
 
-The root task is an orchestrator, not an analysis agent. It creates seven visible subagent threads sequentially, with a mandatory user confirmation gate between stages.
+The root task owns orchestration and artifacts. Specialist work runs in visible Codex native subagent threads, one at a time.
 
-| Stage | Custom agent type | Required input | Output file |
-|---|---|---|---|
-| 1 | `growth-business` | Original request and source context | `01_business_analysis.md` |
-| 2 | `growth-metrics` | Stage 1 report and schema context | `02_metrics_framework.md` |
-| 3 | `growth-sql` | Stages 1-2 reports and data source context | `03_sql_analysis.md` |
-| 4 | `growth-insight` | Stages 1-3 reports and query results, if available | `04_insights.md` |
-| 5 | `growth-visualization` | Stages 1-4 reports | `05_visualization_plan.md` |
-| 6 | `growth-review` | Stages 1-5 reports | `06_review_report.md` |
-| 7 | `growth-report` | Stages 1-6 reports | `07_final_report.md` |
+## New Run
+
+```text
+request
+  -> initialize run
+  -> propose route
+  -> awaiting_route_confirmation
+  -> user confirms exact route revision
+  -> run one role
+  -> validate and render
+  -> awaiting_user_confirmation
+```
+
+The initial request creates and displays a route only. It does not start Business automatically.
+
+## Role Lifecycle
 
 For each stage:
 
-1. Spawn the named custom agent.
-2. Wait for completion.
-3. Check the expected output file and `HANDOFF_READY` marker.
-4. Send one correction message if the contract was not met.
-5. Record the handoff summary.
-6. Close the agent.
-7. Write `run-state.json` with `status: awaiting_user_confirmation`.
-8. Show the report to the user and end the response.
-9. Wait for a new user message that explicitly confirms the stage.
-10. Mark the report approved and include its path and summary in the next agent's prompt.
+1. Verify every declared dependency is approved; skipped stages cannot remain as dependencies.
+2. Start one named custom Agent and create a new attempt directory.
+3. Pass exact approved JSON paths and hashes, never conversational memory alone.
+4. Require one JSON object matching `schemas/handoff.schema.json` and the role Schema.
+5. Save the raw response before parsing it.
+6. Allow one correction for validation errors.
+7. Record the native thread ID, resolved model, effort, elapsed time, and Token usage when available.
+8. Render Markdown from validated JSON.
+9. Register JSON, Markdown, validation-report hashes, and move passing work to `awaiting_user_confirmation`.
+10. Show the result and end the current response.
+11. Start at most one next role only after a later explicit user confirmation.
 
-The initial request starts Stage 1 only. A confirmation starts exactly one next stage. Never use one confirmation to authorize multiple transitions.
+`BLOCKED` and `FAIL` are not approvable stage results. They move the run to a blocked or failed boundary for input, revision, or rollback.
 
-Accepted gate commands:
+Report is terminal. After its validated JSON and final Markdown are written, enter `finalizing`, rebuild required lineage, verify chart manifests, and call `runctl.py finalize`. No additional user stage gate is required.
 
-- `确认，进入下一步` or `继续`
-- `修改：...`
-- `补充：...`
-- `重新生成当前阶段`
+## User Commands
+
+Route gate:
+
+- `确认路由`
+- `修改路由：...`
 - `终止分析`
 
-Do not spawn later stages early. The purpose is traceable, human-approved report-to-report handoff, not parallel or unattended analysis.
+Role gate:
 
-The app exposes each subagent thread in the task's agent activity. The exact placement may vary by Codex app version; these are subagent threads rather than seven unrelated top-level projects.
+- `确认，进入下一步` or `继续`
+- `修改：...` or `补充：...`
+- `重新生成当前阶段` or `重新生成这一阶段`
+- `跳过当前阶段`
+- `回退到：<角色>`
+- `终止分析`
+
+Metrics also accepts `新增指标`、`修改指标`、`删除指标` and `确认最终指标体系`.
+
+## Query Branch
+
+```text
+SQL stage approved
+  -> prepare final read-only SQL
+  -> awaiting_query_confirmation
+  -> user confirms exact SQL SHA-256
+  -> deterministic query runner
+  -> manifest + CSV + profile
+  -> start Insight under the stored SQL-stage approval
+```
+
+Query confirmation is separate from SQL-stage confirmation. A changed SQL request requires a new query confirmation.
+The fingerprint also binds dialect, data-source label, non-secret physical source fingerprint, timeout, row limit, and maximum result bytes.
+
+## Revision And Review
+
+- Revising a stage creates a new attempt and never overwrites history.
+- All dependent approved artifacts become `stale`.
+- A route revision can carry forward an approval only when stage identity, input hashes, and artifact hash are unchanged and listed in `reused_approved_artifacts`.
+- Review `FAIL` creates a hash-bound rollback plan. Only a later `approve_rollback` action routes back to the earliest responsible stage and invalidates completed descendants.
+- Report requires Review `PASS` or `PASS_WITH_RISKS`.
+
+## Concurrency
+
+Only one role may be `running`. Read-heavy Agent work can be parallelized in other projects, but this Skill intentionally remains serial because every handoff requires user approval and downstream artifacts depend on exact versions.

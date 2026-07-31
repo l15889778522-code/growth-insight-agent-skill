@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "chart": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chart_id", "title", "type", "question", "metric_id", "x", "y", "filters", "aggregation", "output_formats", "status"],
+      "properties": {
+        "chart_id": {"type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]+$"},
+        "title": {"type": "string", "minLength": 1},
+        "type": {"enum": ["line", "bar", "scatter"]},
+        "question": {"type": "string", "minLength": 1},
+        "metric_id": {"type": "string", "minLength": 1},
+        "x": {"type": "string", "minLength": 1},
+        "y": {"type": "string", "minLength": 1},
+        "filters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["field", "op", "value"],
+            "properties": {
+              "field": {"type": "string", "minLength": 1},
+              "op": {"enum": ["eq", "ne", "in"]},
+              "value": {}
+            }
+          }
+        },
+        "aggregation": {"enum": ["none", "sum", "mean", "count"]},
+        "output_formats": {"type": "array", "items": {"enum": ["png", "html"]}, "minItems": 1, "uniqueItems": true},
+        "status": {"enum": ["ready", "blocked_by_missing_data"]}
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "source_file", "source_sha256", "charts"],
+  "properties": {
+    "schema_version": {"const": "1.1"},
+    "source_file": {"type": "string", "minLength": 1},
+    "source_sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
+    "charts": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/chart"}
+    }
+  }
+}
