@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    branches:
+      - main
   pull_request:
   workflow_dispatch:
 
@@ -36,3 +38,80 @@ jobs:
         run: python -m pip install -r requirements-dev.txt -c constraints.txt
       - name: Run offline test suite
         run: python -m pytest -q
+
+  installation-smoke:
+    name: Clean install / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    env:
+      PYTHONUTF8: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            constraints.txt
+      - name: Exercise clean install and uninstall lifecycle
+        run: >-
+          python .github/scripts/installation_smoke.py
+          --source-root .
+          --work-root "${{ runner.temp }}"
+
+  mysql-integration:
+    name: MySQL 8.4 release gate
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci-root-password
+          MYSQL_ROOT_HOST: "%"
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pci-root-password --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+
+    env:
+      DB_TYPE: mysql
+      DB_SOURCE_ID: github-actions-mysql-8.4
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: "3306"
+      MYSQL_DATABASE: analytics
+      MYSQL_USER: ci_readonly
+      MYSQL_PASSWORD: ci-readonly-password
+      MYSQL_SSL_MODE: required
+      MYSQL_CI_ADMIN_USER: root
+      MYSQL_CI_ADMIN_PASSWORD: ci-root-password
+      RUN_MYSQL_INTEGRATION: "1"
+      PYTHONUTF8: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+            constraints.txt
+      - name: Install validated dependencies
+        run: python -m pip install -r requirements-dev.txt -c constraints.txt
+      - name: Prepare readonly TLS fixture and bind fingerprint
+        run: python .github/scripts/setup_mysql_ci.py --github-env "$GITHUB_ENV"
+      - name: Run real MySQL release-gate tests
+        run: >-
+          python -m pytest -q
+          tests/test_database_v12.py::test_real_mysql_readonly_integration_entry
+          tests/test_mysql_live.py::test_real_mysql_release_gate

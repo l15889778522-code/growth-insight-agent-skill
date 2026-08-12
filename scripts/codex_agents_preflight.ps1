@@ -8,6 +8,27 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+function Get-Sha256Hex {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$LiteralPath
+    )
+
+    $stream = [System.IO.File]::OpenRead($LiteralPath)
+    try {
+        $sha256 = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            return ([System.BitConverter]::ToString($sha256.ComputeHash($stream))).Replace('-', '')
+        }
+        finally {
+            $sha256.Dispose()
+        }
+    }
+    finally {
+        $stream.Dispose()
+    }
+}
 $requiredNames = @(
     'growth-business',
     'growth-metrics',
@@ -42,8 +63,8 @@ foreach ($name in $requiredNames) {
         $ok = $false
         $messages += 'target_missing'
     }
-    $sourceHash = if (Test-Path -LiteralPath $sourcePath -PathType Leaf) { (Get-FileHash -Algorithm SHA256 -LiteralPath $sourcePath).Hash } else { $null }
-    $targetHash = if (Test-Path -LiteralPath $targetPath -PathType Leaf) { (Get-FileHash -Algorithm SHA256 -LiteralPath $targetPath).Hash } else { $null }
+    $sourceHash = if (Test-Path -LiteralPath $sourcePath -PathType Leaf) { Get-Sha256Hex -LiteralPath $sourcePath } else { $null }
+    $targetHash = if (Test-Path -LiteralPath $targetPath -PathType Leaf) { Get-Sha256Hex -LiteralPath $targetPath } else { $null }
     if ($sourceHash -and $targetHash -and $sourceHash -ne $targetHash) {
         $ok = $false
         $messages += 'hash_mismatch'

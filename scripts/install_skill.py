@@ -27,6 +27,7 @@ SKILL_NAME = "multi-agent-data-analysis-skill"
 SKILL_MANIFEST = f"{SKILL_NAME}.manifest.json"
 AGENTS_MANIFEST = "multi-agent-data-analysis-agents.manifest.json"
 SUPPORTED_AGENT_CONTRACT_VERSIONS = set(SUPPORTED_CONTRACT_VERSIONS)
+SKILL_MUTABLE_PATHS = (".venv", "scripts/__pycache__")
 WINDOWS_RESERVED_NAMES = {
     "aux",
     "con",
@@ -144,6 +145,12 @@ def _display_path(path: Path) -> str:
     return value
 
 
+def _subprocess_path(path: Path) -> str:
+    """Return a native absolute path suitable for Python and pip subprocesses."""
+
+    return _display_path(path) if os.name == "nt" else str(path)
+
+
 def _windows_volume(path: Path) -> str:
     drive = os.path.splitdrive(str(path))[0]
     if drive.startswith("\\\\?\\UNC\\"):
@@ -244,7 +251,7 @@ def collect_skill_package(source_root: str | os.PathLike[str]) -> PackageSpec:
         source_root=root,
         files=tuple(sorted(by_path.values(), key=lambda item: item.path)),
         metadata={"inventory": "runtime-only"},
-        mutable_paths=(".venv",),
+        mutable_paths=SKILL_MUTABLE_PATHS,
     )
 
 
@@ -624,19 +631,19 @@ def _venv_python(venv: Path) -> Path:
 
 def _create_runtime_environment(destination: Path, python_executable: str) -> None:
     venv = destination / ".venv"
-    subprocess.run([python_executable, "-m", "venv", str(venv)], check=True)
+    subprocess.run([python_executable, "-m", "venv", _subprocess_path(venv)], check=True)
     command = [
-        str(_venv_python(venv)),
+        _subprocess_path(_venv_python(venv)),
         "-m",
         "pip",
         "install",
         "--disable-pip-version-check",
         "-r",
-        str(destination / "requirements.txt"),
+        _subprocess_path(destination / "requirements.txt"),
     ]
     constraints = destination / "constraints.txt"
     if constraints.is_file():
-        command.extend(["-c", str(constraints)])
+        command.extend(["-c", _subprocess_path(constraints)])
     subprocess.run(command, check=True)
 
 
@@ -698,7 +705,9 @@ def install_package(
         pass
 
     owned_files = set(old_files) | {record.path for record in spec.files} | {spec.manifest_name}
-    replaced_roots = {".venv"} if spec.kind == "skill" and install_dependencies else set()
+    replaced_roots = {"scripts/__pycache__"} if spec.kind == "skill" else set()
+    if spec.kind == "skill" and install_dependencies:
+        replaced_roots.add(".venv")
     preserved = _preserved_roots(target, owned_files, replaced_roots)
     result: dict[str, object] = {
         "action": "install",
@@ -793,7 +802,7 @@ def uninstall_package(
         raise InstallerError("--purge deletes unmanaged user files and therefore also requires --force.")
 
     owned = set(manifest.files) | {manifest_name}
-    replaced_roots = set()
+    replaced_roots = {"scripts/__pycache__"} if component == "skill" else set()
     if component == "skill" and not keep_environment:
         replaced_roots.add(".venv")
     preserved = [] if purge else _preserved_roots(target, owned, replaced_roots)

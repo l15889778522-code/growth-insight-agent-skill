@@ -133,6 +133,9 @@ def test_modified_managed_file_requires_force_and_uninstall_preserves_user_files
     environment_marker = target / ".venv" / "local-environment.txt"
     environment_marker.parent.mkdir()
     environment_marker.write_text("mutable\n", encoding="utf-8")
+    runtime_cache = target / "scripts" / "__pycache__" / "runtime.pyc"
+    runtime_cache.parent.mkdir()
+    runtime_cache.write_bytes(b"stale cache")
     expected_skill = (target / "SKILL.md").read_text(encoding="utf-8")
     (target / "SKILL.md").write_text(expected_skill + "\nlocal edit\n", encoding="utf-8")
 
@@ -146,7 +149,11 @@ def test_modified_managed_file_requires_force_and_uninstall_preserves_user_files
     assert replaced["status"] == "updated"
     assert user_file.read_text(encoding="utf-8") == "keep me\n"
     assert environment_marker.read_text(encoding="utf-8") == "mutable\n"
+    assert not runtime_cache.exists()
     assert (target / "SKILL.md").read_text(encoding="utf-8") == expected_skill
+
+    runtime_cache.parent.mkdir()
+    runtime_cache.write_bytes(b"generated cache")
 
     _, removed = run_installer("uninstall", "--destination", target)
     assert removed is not None
@@ -155,6 +162,7 @@ def test_modified_managed_file_requires_force_and_uninstall_preserves_user_files
     assert not (target / "SKILL.md").exists()
     assert not (target / installer.SKILL_MANIFEST).exists()
     assert not (target / ".venv").exists()
+    assert not runtime_cache.exists()
 
 
 def test_failed_upgrade_restores_old_package_and_user_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -223,6 +231,33 @@ def test_dependency_rebuild_failure_restores_old_environment(tmp_path: Path, mon
     assert (target / installer.SKILL_MANIFEST).read_bytes() == old_manifest
     assert old_environment.read_text(encoding="utf-8") == "old and usable\n"
     assert not (target / ".venv" / "partial.txt").exists()
+
+
+def test_runtime_environment_uses_subprocess_compatible_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = installer._absolute(tmp_path / "runtime-\u4e2d\u6587" / "skill")
+    commands: list[list[str]] = []
+
+    monkeypatch.setattr(
+        installer,
+        "_venv_python",
+        lambda venv: venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python"),
+    )
+    monkeypatch.setattr(
+        installer.subprocess,
+        "run",
+        lambda command, check: commands.append(command),
+    )
+
+    installer._create_runtime_environment(destination, sys.executable)
+
+    assert commands[0][-1] == installer._subprocess_path(destination / ".venv")
+    assert commands[1][0] == installer._subprocess_path(installer._venv_python(destination / ".venv"))
+    assert commands[1][-1] == installer._subprocess_path(destination / "requirements.txt")
+    if os.name == "nt":
+        assert all(not value.startswith("\\\\?\\") for command in commands for value in command)
 
 
 def test_custom_agent_uninstall_preserves_other_agent_files(tmp_path: Path) -> None:

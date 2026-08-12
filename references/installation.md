@@ -36,9 +36,9 @@ Skill manifest 只列出运行时必要资源：`VERSION`、`SKILL.md`、运行�
 
 ## 用户文件策略
 
-目标目录中未列入旧 manifest、且不与新版托管路径冲突的文件和目录视为用户文件，升级时原样保留。Skill 的 `.venv` 是可变但由安装器拥有的路径：普通升级会保留它；带 `--install-dependencies` 的升级会重建它并在失败时恢复旧环境。
+目标目录中未列入旧 manifest、且不与新版托管路径冲突的文件和目录视为用户文件，升级时原样保留。Skill 的 `.venv` 和 `scripts/__pycache__` 是可变但由安装器拥有的路径：普通升级会保留 `.venv` 并清理可再生成的 Python 缓存；带 `--install-dependencies` 的升级会重建 `.venv` 并在失败时恢复旧环境。
 
-默认卸载仅移除 manifest 托管文件和 Skill `.venv`，其他用户文件仍留在目标目录。使用 `--keep-environment` 可在卸载 Skill 时保留 `.venv`。`--purge --force` 会删除目标中的未托管用户文件，属于显式破坏性操作。
+默认卸载移除 manifest 托管文件、Skill `.venv` 和可再生成的 `scripts/__pycache__`，其他用户文件仍留在目标目录。使用 `--keep-environment` 可在卸载 Skill 时保留 `.venv`。`--purge --force` 会删除目标中的未托管用户文件，属于显式破坏性操作。
 
 ```powershell
 python scripts/install_skill.py uninstall --scope project --project-path C:\work\project
