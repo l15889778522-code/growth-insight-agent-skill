@@ -61,8 +61,8 @@ def main() -> int:
             )
             cursor.execute("DROP USER IF EXISTS 'ci_readonly'@'%'")
             cursor.execute(
-                "CREATE USER 'ci_readonly'@'%' IDENTIFIED BY %s REQUIRE SSL",
-                (readonly_password,),
+                "CREATE USER 'ci_readonly'@%s IDENTIFIED BY %s REQUIRE SSL",
+                ("%", readonly_password),
             )
             cursor.execute("GRANT SELECT ON `analytics`.* TO 'ci_readonly'@'%'")
             cursor.execute("DROP TABLE IF EXISTS `analytics`.`ci_values`")
