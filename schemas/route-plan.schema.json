@@ -2,11 +2,26 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://local.multi-agent-data-analysis/schemas/route-plan.schema.json",
   "title": "Analysis Route Plan",
+  "$defs": {
+    "inputBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input_name", "input_type", "artifact_id", "path", "sha256", "source"],
+      "properties": {
+        "input_name": {"type": "string", "minLength": 1},
+        "input_type": {"type": "string", "minLength": 1},
+        "artifact_id": {"type": "string", "minLength": 1},
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
+        "source": {"type": "string", "minLength": 1}
+      }
+    }
+  },
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "route_id", "route_revision", "task_type", "stages", "required_inputs", "provided_inputs", "missing_inputs", "fallback_route", "user_adjustments", "reused_approved_artifacts", "created_at"],
   "properties": {
-    "schema_version": {"const": "1.1"},
+    "schema_version": {"enum": ["1.1", "1.2"]},
     "route_id": {"type": "string", "minLength": 3},
     "route_revision": {"type": "integer", "minimum": 1},
     "task_type": {"type": "string", "minLength": 1},
@@ -30,6 +45,10 @@
     },
     "required_inputs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
     "provided_inputs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "input_bindings": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/inputBinding"}
+    },
     "missing_inputs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
     "fallback_route": {"type": ["object", "null"]},
     "user_adjustments": {"type": "array", "items": {"type": "string"}},
@@ -47,5 +66,11 @@
       }
     },
     "created_at": {"type": "string", "format": "date-time"}
-  }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"schema_version": {"const": "1.2"}}},
+      "then": {"required": ["input_bindings"]}
+    }
+  ]
 }

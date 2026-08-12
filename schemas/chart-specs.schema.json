@@ -36,7 +36,7 @@
   "additionalProperties": false,
   "required": ["schema_version", "source_file", "source_sha256", "charts"],
   "properties": {
-    "schema_version": {"const": "1.1"},
+    "schema_version": {"enum": ["1.1", "1.2"]},
     "source_file": {"type": "string", "minLength": 1},
     "source_sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
     "charts": {

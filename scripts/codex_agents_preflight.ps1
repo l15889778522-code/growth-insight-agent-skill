@@ -67,7 +67,7 @@ foreach ($name in $requiredNames) {
             $ok = $false
             $messages += 'sandbox_not_read_only'
         }
-        if ($content -notmatch 'agent_contract_version.*1\.1') {
+        if ($content -notmatch 'agent_contract_version.*1\.2') {
             $ok = $false
             $messages += 'contract_version_missing'
         }
@@ -84,15 +84,17 @@ foreach ($name in $requiredNames) {
         source_sha256 = $sourceHash
         installed_sha256 = $targetHash
         model = $model
+        model_resolution = if ($model) { 'explicit' } else { 'inherited_native_portable' }
         model_reasoning_effort = $effort
         sandbox_mode = $sandbox
+        tool_policy = 'inherits_host_tool_availability; TOML enforces read-only sandbox only'
         messages = $messages
     }
 }
 
 $manifestPath = Join-Path $destinationPath 'multi-agent-data-analysis-agents.manifest.json'
 $result = [ordered]@{
-    schema_version = '1.1'
+    schema_version = '1.2'
     checked_at = [DateTimeOffset]::UtcNow.ToString('o')
     scope = $Scope.ToLowerInvariant()
     destination = $destinationPath

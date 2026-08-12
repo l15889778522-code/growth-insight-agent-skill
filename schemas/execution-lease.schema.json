@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.multi-agent-data-analysis/schemas/execution-lease.schema.json",
+  "title": "Deterministic Execution Lease",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "lease_id",
+    "kind",
+    "subject_id",
+    "subject_revision",
+    "route_revision",
+    "input_hashes",
+    "state",
+    "staging_path",
+    "output_path",
+    "created_at",
+    "updated_at",
+    "expires_at",
+    "abort_reason",
+    "published_artifact_ids"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.2"},
+    "lease_id": {"type": "string", "minLength": 3},
+    "kind": {"enum": ["query", "charts", "lineage", "final_report"]},
+    "subject_id": {"type": "string", "minLength": 1},
+    "subject_revision": {"type": "integer", "minimum": 1},
+    "route_revision": {"type": "integer", "minimum": 0},
+    "input_hashes": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"}
+    },
+    "state": {"enum": ["prepared", "executing", "publishing", "completed", "aborted"]},
+    "staging_path": {"type": "string", "minLength": 1},
+    "output_path": {"type": ["string", "null"]},
+    "created_at": {"type": "string", "format": "date-time"},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "abort_reason": {"type": ["string", "null"]},
+    "published_artifact_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+  }
+}

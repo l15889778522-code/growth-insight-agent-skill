@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.2",
+  "agent_contract_version": "1.2",
+  "run_id": "native-agent-bmr-20260809",
+  "stage_id": "s03-review",
+  "role": "growth-review",
+  "attempt": 1,
+  "stage_status": "PASS_WITH_RISKS",
+  "summary": "The candidate metric contract is consistent with the approved Business scope and available schema fields. Operational computation remains intentionally unresolved pending approval of event mappings, window boundaries, cohort-maturity rules, and plan assignment timing.",
+  "confirmed_decisions": [
+    "业务决策保持不变：决定下一季度 onboarding 优化应优先提升首次激活还是激活后的七日留存。",
+    "分析人群为 2026-07-01 至 2026-07-31 创建的非测试账户。",
+    "分析时区为 Asia/Shanghai。",
+    "用户指定的 seven_day_retained_activation_rate 必须纳入后续指标契约设计。",
+    "本次仅设计和复核指标，不生成或执行 SQL。",
+    "业务决策保持不变：决定下一季度 onboarding 优化应优先提升首次激活还是激活后的七日留存。",
+    "分析人群为 2026-07-01 至 2026-07-31 创建的非测试账户。",
+    "分析时区为 Asia/Shanghai。",
+    "用户指定的 seven_day_retained_activation_rate 必须纳入后续指标契约设计。",
+    "本次仅设计和复核指标，不生成或执行 SQL。",
+    "The analysis unit is the account.",
+    "The population is non-test accounts created from 2026-07-01 through 2026-07-31 in Asia/Shanghai.",
+    "Both metrics are segmented by signup_cohort_day and plan.",
+    "The user-specified metric_id seven_day_retained_activation_rate and its activated-account denominator are preserved.",
+    "Both metric definitions remain candidate contracts until event mappings, window boundaries, and plan timing are approved."
+  ],
+  "conflicts": [],
+  "facts": [],
+  "calculations": [],
+  "assumptions": [],
+  "hypotheses": [],
+  "evidence": [],
+  "metrics": [],
+  "data_artifacts": [],
+  "risks": [
+    "Available schema fields do not establish that qualifying activation or core-action mappings exist.",
+    "Unknown first-activation and core_action event mappings prevent operational computation.",
+    "Unknown activation and day-seven window rules can materially change numerator, denominator, and cohort maturity.",
+    "Unknown plan timing can cause segment reassignment or temporal leakage."
+  ],
+  "open_questions": [],
+  "required_next_inputs": [],
+  "recommended_next_stage": null,
+  "lineage": [],
+  "role_payload": {
+    "decision": "PASS_WITH_RISKS",
+    "findings": [],
+    "required_fixes": [],
+    "optional_improvements": [
+      "Approve the first-activation event or event-sequence mapping.",
+      "Approve the core_action event_name mapping.",
+      "Approve the first-activation qualification window.",
+      "Approve the day-seven observation-window boundaries and cohort-maturity rule.",
+      "Approve the timestamp used to assign plan."
+    ],
+    "rollback_stage": null,
+    "lineage_breaks": []
+  }
+}

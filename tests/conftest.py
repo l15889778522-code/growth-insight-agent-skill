@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +15,8 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 from render_stage_report import render_markdown
-from runctl import approve, initialize_run, load_state, record_stage, set_route, start_stage
+from contracts import CURRENT_CONTRACT_VERSION
+from runctl import approve, initialize_run, load_state, record_agent_receipt, record_stage, set_route, start_stage
 from runtime_common import sha256_json, utc_now
 
 
@@ -52,19 +54,47 @@ def route_plan(
         )
         prior = stage_id
     return {
-        "schema_version": "1.1",
+        "schema_version": CURRENT_CONTRACT_VERSION,
         "route_id": "route-test",
         "route_revision": revision,
         "task_type": "test",
         "stages": stages,
         "required_inputs": required,
         "provided_inputs": provided,
+        "input_bindings": [
+            {
+                "input_name": name,
+                "input_type": name,
+                "artifact_id": f"fixture-{name}",
+                "path": "request.json",
+                "sha256": "0" * 64,
+                "source": "request",
+            }
+            for name in provided
+        ],
         "missing_inputs": sorted(set(required) - set(provided)),
         "fallback_route": None,
         "user_adjustments": [],
         "reused_approved_artifacts": reused or [],
         "created_at": utc_now(),
     }
+
+
+def bind_route_inputs(run_dir: Path, route: dict[str, Any]) -> dict[str, Any]:
+    bound = deepcopy(route)
+    request = next(item for item in load_state(run_dir)["artifacts"] if item.get("kind") == "request")
+    bound["input_bindings"] = [
+        {
+            "input_name": name,
+            "input_type": name,
+            "artifact_id": request["artifact_id"],
+            "path": request["path"],
+            "sha256": request["sha256"],
+            "source": "request",
+        }
+        for name in bound["provided_inputs"]
+    ]
+    return bound
 
 
 def metric(metric_id: str = "revenue_total", version: int = 1, formula: str = "SUM(revenue)") -> dict[str, Any]:
@@ -177,6 +207,7 @@ def stage_output(
             "optional_improvements": [],
             "rollback_stage": "s01-business" if status == "FAIL" else None,
             "lineage_breaks": [],
+            "data_quality_warnings": [],
         },
         "growth-report": {
             "executive_summary": "Revenue analysis completed.",
@@ -195,8 +226,8 @@ def stage_output(
     }
     required_next = ["Provide the missing input."] if status == "BLOCKED" else []
     return {
-        "schema_version": "1.1",
-        "agent_contract_version": "1.1",
+        "schema_version": CURRENT_CONTRACT_VERSION,
+        "agent_contract_version": CURRENT_CONTRACT_VERSION,
         "run_id": run_id,
         "stage_id": stage_id,
         "role": role,
@@ -222,20 +253,88 @@ def stage_output(
 
 
 def materialize_stage(run_dir: Path, output: dict[str, Any]) -> dict[str, Any]:
+    if output.get("schema_version") == CURRENT_CONTRACT_VERSION:
+        state = load_state(run_dir)
+        by_path = {
+            item.get("path"): item
+            for item in state["artifacts"]
+            if item.get("path") and not item.get("superseded_by")
+        }
+        by_stage = {
+            item.get("stage_id"): item
+            for item in state["artifacts"]
+            if item.get("stage_id") and item.get("artifact_id")
+        }
+
+        def normalize(reference: Any) -> Any:
+            if not isinstance(reference, str):
+                return reference
+            path = reference.split("#", 1)[0]
+            record = by_path.get(path)
+            selector_type = "file"
+            selector_value: Any = None
+            if record is None and ":" in reference:
+                stage_id, _, item_id = reference.partition(":")
+                record = by_stage.get(stage_id)
+                selector_type = "stage_field"
+                selector_value = "" if not item_id else "/role_payload"
+            if record is None:
+                return reference
+            return {
+                "artifact_id": record["artifact_id"],
+                "sha256": record["sha256"],
+                "selector_type": selector_type,
+                "selector_value": selector_value,
+            }
+
+        output["evidence"] = [normalize(item) for item in output.get("evidence", [])]
+        for calculation in output.get("calculations", []):
+            if isinstance(calculation, dict):
+                calculation["input_evidence_refs"] = [
+                    normalize(item) for item in calculation.get("input_evidence_refs", [])
+                ]
+        payload = output.get("role_payload", {})
+        collections = []
+        for key in ("observations", "recommendations", "findings"):
+            collections.extend(payload.get(key, []))
+        for item in collections:
+            if isinstance(item, dict) and "evidence_refs" in item:
+                item["evidence_refs"] = [normalize(reference) for reference in item["evidence_refs"]]
+
     attempt_dir = run_dir / "stages" / output["stage_id"] / f"attempt-{output['attempt']}"
     json_path = write_json(attempt_dir / "stage.json", output)
+    raw_response_path = attempt_dir / "raw-response.txt"
+    raw_response_path.write_text(
+        json.dumps(output, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     markdown_path = attempt_dir / "stage.md"
     markdown_path.write_text(render_markdown(output) + "\n", encoding="utf-8")
     report_path = write_json(
         attempt_dir / "validation.json",
         {
-            "schema_version": "1.1",
+            "schema_version": CURRENT_CONTRACT_VERSION,
             "valid": True,
             "role": output["role"],
             "checked_at": utc_now(),
             "stage_sha256": sha256_json(output),
             "errors": [],
         },
+    )
+    runtime = load_state(run_dir)["stages"]
+    active = next(item for item in runtime if item["stage_id"] == output["stage_id"])["runtime"]
+    token_usage = active.get("token_usage") or {}
+    agent_id = active.get("agent_id") or active.get("thread_id") or f"test-agent-{output['stage_id']}-{output['attempt']}"
+    record_agent_receipt(
+        run_dir,
+        output["stage_id"],
+        raw_response_path,
+        json_path,
+        agent_id=agent_id,
+        model=active.get("model") or "gpt-test",
+        input_tokens=token_usage.get("input_tokens", 1),
+        output_tokens=token_usage.get("output_tokens", 1),
+        capture_method="codex_tool_result",
     )
     return record_stage(run_dir, json_path, markdown_path, report_path)
 
@@ -265,7 +364,7 @@ def approve_pending(run_dir: Path, approval_type: str, key: str) -> dict[str, An
 def initialized_run(tmp_path: Path):
     def factory(roles: list[str], **route_kwargs: Any) -> tuple[Path, dict[str, Any]]:
         run_dir = initialize_run(tmp_path / "runs", "test-run", {"question": "How is revenue changing?"})
-        route = route_plan(roles, **route_kwargs)
+        route = bind_route_inputs(run_dir, route_plan(roles, **route_kwargs))
         route_path = write_json(tmp_path / "route.json", route)
         set_route(run_dir, route_path)
         return run_dir, route

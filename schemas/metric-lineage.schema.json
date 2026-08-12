@@ -4,7 +4,7 @@
   "additionalProperties": false,
   "required": ["schema_version", "metrics"],
   "properties": {
-    "schema_version": {"const": "1.1"},
+    "schema_version": {"enum": ["1.1", "1.2"]},
     "metrics": {
       "type": "array",
       "items": {
@@ -17,9 +17,15 @@
           "definition_artifact": {"type": ["string", "null"]},
           "sql_expressions": {"type": "array", "items": {"type": "string"}},
           "result_columns": {"type": "array", "items": {"type": "string"}},
-          "insight_evidence": {"type": "array", "items": {"type": "string"}},
+          "insight_evidence": {
+            "type": "array",
+            "items": {"oneOf": [{"type": "string"}, {"$ref": "evidence-ref.schema.json"}]}
+          },
           "chart_ids": {"type": "array", "items": {"type": "string"}},
-          "recommendation_refs": {"type": "array", "items": {"type": "string"}},
+          "recommendation_refs": {
+            "type": "array",
+            "items": {"oneOf": [{"type": "string"}, {"$ref": "evidence-ref.schema.json"}]}
+          },
           "breaks": {"type": "array", "items": {"type": "string"}}
         }
       }

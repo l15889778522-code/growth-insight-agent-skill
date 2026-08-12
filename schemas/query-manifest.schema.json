@@ -4,7 +4,7 @@
   "additionalProperties": false,
   "required": ["schema_version", "query_id", "data_source_type", "data_source_id", "data_source_fingerprint", "sql_sha256", "dialect", "started_at", "completed_at", "elapsed_ms", "timeout_seconds", "max_rows", "max_result_bytes", "returned_rows", "columns", "result_path", "result_bytes", "result_sha256", "profile_path", "profile_sha256", "truncated", "sampled", "quality_warnings"],
   "properties": {
-    "schema_version": {"const": "1.1"},
+    "schema_version": {"enum": ["1.1", "1.2"]},
     "query_id": {"type": "string"},
     "data_source_type": {"type": "string"},
     "data_source_id": {"type": "string"},

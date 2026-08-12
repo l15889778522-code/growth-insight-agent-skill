@@ -7,6 +7,7 @@ import argparse
 import json
 from pathlib import Path
 
+from contracts import CURRENT_CONTRACT_VERSION
 from db_common import data_source_fingerprint, get_adapter, load_config
 from runtime_common import atomic_write_json, atomic_write_text, utc_now
 
@@ -31,7 +32,7 @@ def main() -> int:
     config = load_config(args.db)
     adapter = get_adapter(config)
     data = {
-        "schema_version": "1.1",
+        "schema_version": CURRENT_CONTRACT_VERSION,
         "data_source_id": config.data_source_id,
         "data_source_fingerprint": data_source_fingerprint(config),
         "db_type": config.db_type,

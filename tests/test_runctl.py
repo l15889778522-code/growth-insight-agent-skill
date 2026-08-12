@@ -7,14 +7,16 @@ import pytest
 
 import runctl
 from build_lineage import build
-from conftest import approve_pending, materialize_stage, metric, route_plan, stage_output, write_json
+from conftest import approve_pending, bind_route_inputs, materialize_stage, metric, route_plan, stage_output, write_json
 from runctl import (
     approve,
     audit_run,
     build_run_summary,
     finalize_run,
     load_state,
+    publish_final_report,
     record_agent_runtime,
+    register_artifacts,
     recover_state,
     resume,
     revise,
@@ -22,6 +24,7 @@ from runctl import (
     start_stage,
     stop,
 )
+from runtime_common import read_jsonl
 
 
 def _run_stage(run_dir: Path, role: str, stage_id: str, **output_kwargs):
@@ -55,7 +58,7 @@ def test_route_with_missing_input_cannot_be_approved(initialized_run) -> None:
 
 
 def test_stage_gates_metric_revision_and_terminal_review(approved_run) -> None:
-    run_dir, _ = approved_run(["growth-business", "growth-metrics", "growth-review"])
+    run_dir, _ = approved_run(["growth-business", "growth-metrics", "growth-review", "growth-report"])
 
     _, state = _run_stage(run_dir, "growth-business", "s01-business")
     assert state["status"] == "awaiting_user_confirmation"
@@ -85,8 +88,15 @@ def test_stage_gates_metric_revision_and_terminal_review(approved_run) -> None:
     assert state["status"] == "awaiting_user_confirmation"
     approve_pending(run_dir, "stage", "review-key-0001")
     final = load_state(run_dir)
-    assert final["status"] == "finalizing"
-    assert final["pending_stage"] is None
+    assert final["status"] == "running"
+    assert final["pending_stage"] == "s04-report"
+    result = run_dir / "data" / "result.csv"
+    result.write_text("day,revenue_total\n2026-01-01,10\n", encoding="utf-8")
+    register_artifacts(run_dir, [{"kind": "user_result", "path": result}])
+    _run_stage(run_dir, "growth-report", "s04-report")
+    approve_pending(run_dir, "stage", "report-key-0001")
+    build(run_dir)
+    publish_final_report(run_dir)
     finalize_run(run_dir)
     assert load_state(run_dir)["status"] == "completed"
     assert audit_run(run_dir) == []
@@ -187,11 +197,11 @@ def test_route_revision_carries_only_exact_approved_artifact(approved_run, tmp_p
             {
                 "stage_id": "s01-business",
                 "artifact_sha256": business["artifact"]["sha256"],
-                "input_hashes": {},
+                "input_hashes": business["input_hashes"],
             }
         ],
     )
-    set_route(run_dir, write_json(tmp_path / "route-2.json", second))
+    set_route(run_dir, write_json(tmp_path / "route-2.json", bind_route_inputs(run_dir, second)))
     rerouted = load_state(run_dir)
     assert rerouted["stages"][0]["status"] == "approved"
     assert len(rerouted["approved_artifacts"]) == 1
@@ -211,13 +221,15 @@ def test_event_snapshot_recovers_tampered_state(initialized_run) -> None:
     recovered = recover_state(run_dir)
     assert recovered["status"] == "awaiting_route_confirmation"
     assert audit_run(run_dir) == []
+    events = read_jsonl(run_dir / "events.jsonl")
+    assert events[-1]["event_type"] == "state_recovered"
 
 
 def test_event_snapshot_recovers_commit_interrupted_before_state_write(tmp_path: Path, monkeypatch) -> None:
     from runctl import initialize_run
 
     run_dir = initialize_run(tmp_path / "runs", "test-run", {"question": "x"})
-    route_path = write_json(tmp_path / "route.json", route_plan(["growth-business"]))
+    route_path = write_json(tmp_path / "route.json", bind_route_inputs(run_dir, route_plan(["growth-business"])))
     original_write = runctl.atomic_write_json
 
     def fail_state_write(path, value):
@@ -262,7 +274,6 @@ def test_runtime_summary_records_model_tokens_and_artifact(approved_run) -> None
     assert summary["attempts"][0]["thread_id"] == "thread-123"
     assert summary["attempts"][0]["model"] == "gpt-test"
     assert (run_dir / "final" / "run-summary.json").is_file()
-    finalize_run(run_dir)
     assert audit_run(run_dir) == []
 
 
@@ -295,11 +306,19 @@ def test_report_requires_post_report_lineage_before_finalization(approved_run) -
     _run_stage(run_dir, "growth-review", "s02-review")
     approve_pending(run_dir, "stage", "finalize-review-key")
     _run_stage(run_dir, "growth-report", "s03-report", evidence_ref="s02-review:decision")
+    assert load_state(run_dir)["status"] == "awaiting_user_confirmation"
+    approve_pending(run_dir, "stage", "finalize-report-key")
     assert load_state(run_dir)["status"] == "finalizing"
     with pytest.raises(ValueError, match="rebuilt after Report"):
         finalize_run(run_dir)
     build(run_dir)
+    with pytest.raises(ValueError, match="final report"):
+        finalize_run(run_dir)
+    publish_final_report(run_dir)
     finalize_run(run_dir)
     assert load_state(run_dir)["status"] == "completed"
     with pytest.raises(ValueError, match="immutable"):
         build(run_dir)
+    final_report = next(item for item in load_state(run_dir)["artifacts"] if item.get("kind") == "final_report")
+    (run_dir / final_report["path"]).write_text("tampered\n", encoding="utf-8")
+    assert any("Artifact hash mismatch" in error for error in audit_run(run_dir))

@@ -10,6 +10,8 @@ import platform
 import sys
 from pathlib import Path
 
+from contracts import CURRENT_CONTRACT_VERSION
+
 
 PACKAGES = {
     "jsonschema": "jsonschema",
@@ -32,9 +34,9 @@ def check(include_dev: bool = False) -> dict[str, object]:
             records.append({"package": distribution_name, "import": import_name, "version": version, "ok": True, "error": None})
         except Exception as exc:
             records.append({"package": distribution_name, "import": import_name, "version": None, "ok": False, "error": str(exc)})
-    python_ok = sys.version_info >= (3, 11)
+    python_ok = (3, 11) <= sys.version_info[:2] <= (3, 13)
     return {
-        "schema_version": "1.1",
+        "schema_version": CURRENT_CONTRACT_VERSION,
         "python": platform.python_version(),
         "python_executable": str(Path(sys.executable).resolve()),
         "python_ok": python_ok,
@@ -44,7 +46,7 @@ def check(include_dev: bool = False) -> dict[str, object]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Check v1.1 runtime dependencies.")
+    parser = argparse.ArgumentParser(description=f"Check v{CURRENT_CONTRACT_VERSION} runtime dependencies.")
     parser.add_argument("--include-dev", action="store_true")
     args = parser.parse_args()
     result = check(args.include_dev)

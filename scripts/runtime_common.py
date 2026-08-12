@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic helpers shared by the v1.1 workflow scripts."""
+"""Deterministic helpers shared by the versioned workflow scripts."""
 
 from __future__ import annotations
 

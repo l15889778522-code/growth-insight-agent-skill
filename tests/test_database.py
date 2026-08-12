@@ -75,6 +75,16 @@ def execute_query_script(run_dir: Path, database: Path) -> subprocess.CompletedP
     )
 
 
+def current_artifact_path(run_dir: Path, kind: str) -> Path:
+    artifacts = [
+        item
+        for item in load_state(run_dir)["artifacts"]
+        if item.get("kind") == kind and not item.get("superseded_by")
+    ]
+    assert artifacts, f"Missing active artifact kind: {kind}"
+    return run_dir / artifacts[-1]["path"]
+
+
 def test_sqlite_adapter_is_read_only_and_inspects_schema(tmp_path: Path) -> None:
     database = create_database(tmp_path / "analytics.db")
     adapter = SQLiteAdapter(DbConfig(db_type="sqlite", data_source_id="sqlite-test", sqlite_path=str(database)))
@@ -137,11 +147,13 @@ def test_query_requires_separate_hash_approval_and_writes_manifest(approved_run,
 
     executed = execute_query_script(run_dir, database)
     assert executed.returncode == 0, executed.stderr
-    manifest = json.loads((run_dir / "data" / "query-manifest.json").read_text(encoding="utf-8"))
+    manifest_path = current_artifact_path(run_dir, "query_manifest")
+    result_path = current_artifact_path(run_dir, "query_result")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["returned_rows"] == 2
     assert manifest["result_sha256"]
     assert manifest["profile_sha256"]
-    assert manifest["result_bytes"] == (run_dir / "data" / "result.csv").stat().st_size
+    assert manifest["result_bytes"] == result_path.stat().st_size
     revenue_profile = next(item for item in manifest["columns"] if item["name"] == "revenue_total")
     assert revenue_profile["null_count"] == 1
     assert load_state(run_dir)["pending_query"] is None
@@ -157,7 +169,8 @@ def test_sql_tampering_after_approval_is_blocked(approved_run, tmp_path: Path) -
     sql_path.write_text(sql, encoding="utf-8")
     prepare_query(run_dir, sql_path, "q-revenue", "sqlite-test", "sqlite", 10, 100, 1024 * 1024, sqlite_fingerprint(database))
     approve_pending(run_dir, "query", "tamper-query-key")
-    (run_dir / "data" / "query.sql").write_text("SELECT 999 AS revenue_total LIMIT 1\n", encoding="utf-8")
+    approved_sql_path = run_dir / load_state(run_dir)["pending_query"]["sql_path"]
+    approved_sql_path.write_text("SELECT 999 AS revenue_total LIMIT 1\n", encoding="utf-8")
     result = execute_query_script(run_dir, database)
     assert result.returncode == 2
     assert "hash changed" in result.stderr

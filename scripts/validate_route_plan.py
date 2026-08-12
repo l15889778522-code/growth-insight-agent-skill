@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from contracts import CURRENT_CONTRACT_VERSION
 from runtime_common import SCHEMA_DIR, atomic_write_json, load_json, schema_errors, sha256_json, utc_now
 
 
@@ -22,6 +23,18 @@ def _ancestors(stage_id: str, by_id: dict[str, dict[str, Any]]) -> set[str]:
         found.add(current)
         pending.extend(by_id[current].get("depends_on", []))
     return found
+
+
+def _validate_input_bindings(plan: dict[str, Any], errors: list[str], prefix: str = "") -> None:
+    provided = plan.get("provided_inputs", [])
+    bindings = plan.get("input_bindings", [])
+    if plan.get("schema_version") != CURRENT_CONTRACT_VERSION and not bindings:
+        return
+    names = [item.get("input_name") for item in bindings if isinstance(item, dict)]
+    if len(names) != len(set(names)):
+        errors.append(f"{prefix}input_bindings: input_name values must be unique.")
+    if set(names) != set(provided):
+        errors.append(f"{prefix}input_bindings must bind every provided input exactly once.")
 
 
 def validate_route(plan: dict[str, Any], require_executable: bool = False) -> tuple[list[str], list[str]]:
@@ -70,6 +83,17 @@ def validate_route(plan: dict[str, Any], require_executable: bool = False) -> tu
     expected_missing = required_inputs - provided_inputs
     if declared_missing != expected_missing:
         errors.append("missing_inputs must exactly equal required_inputs minus provided_inputs.")
+    _validate_input_bindings(plan, errors)
+
+    fallback = plan.get("fallback_route")
+    if isinstance(fallback, dict):
+        fallback_required = set(fallback.get("required_inputs", []))
+        fallback_provided = set(fallback.get("provided_inputs", []))
+        fallback_missing = set(fallback.get("missing_inputs", []))
+        if fallback_missing != fallback_required - fallback_provided:
+            errors.append("fallback_route.missing_inputs must exactly equal required_inputs minus provided_inputs.")
+        fallback_plan = {"schema_version": plan.get("schema_version"), **fallback}
+        _validate_input_bindings(fallback_plan, errors, "fallback_route.")
 
     missing_inputs = plan.get("missing_inputs", [])
     if missing_inputs:
@@ -138,7 +162,7 @@ def main() -> int:
 
     errors, warnings = validate_route(plan, args.require_executable)
     report = {
-        "schema_version": "1.1",
+        "schema_version": CURRENT_CONTRACT_VERSION,
         "valid": not errors,
         "executable": not errors and not plan.get("missing_inputs"),
         "route_sha256": sha256_json(plan),

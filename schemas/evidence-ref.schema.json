@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.multi-agent-data-analysis/schemas/evidence-ref.schema.json",
+  "title": "Structured Evidence Reference",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["artifact_id", "sha256", "selector_type", "selector_value"],
+  "properties": {
+    "artifact_id": {"type": "string", "minLength": 1},
+    "sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
+    "selector_type": {
+      "enum": [
+        "file",
+        "json_pointer",
+        "csv_row",
+        "csv_cell",
+        "stage_field",
+        "query_manifest_field",
+        "calculation_id"
+      ]
+    },
+    "selector_value": {}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"selector_type": {"const": "file"}}},
+      "then": {"properties": {"selector_value": {"type": "null"}}}
+    },
+    {
+      "if": {
+        "properties": {
+          "selector_type": {
+            "enum": ["json_pointer", "stage_field", "query_manifest_field", "calculation_id"]
+          }
+        }
+      },
+      "then": {"properties": {"selector_value": {"type": "string"}}}
+    },
+    {
+      "if": {"properties": {"selector_type": {"const": "csv_row"}}},
+      "then": {"properties": {"selector_value": {"type": "integer", "minimum": 1}}}
+    },
+    {
+      "if": {"properties": {"selector_type": {"const": "csv_cell"}}},
+      "then": {
+        "properties": {
+          "selector_value": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["row", "column"],
+            "properties": {
+              "row": {"type": "integer", "minimum": 1},
+              "column": {
+                "oneOf": [
+                  {"type": "string", "minLength": 1},
+                  {"type": "integer", "minimum": 0}
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

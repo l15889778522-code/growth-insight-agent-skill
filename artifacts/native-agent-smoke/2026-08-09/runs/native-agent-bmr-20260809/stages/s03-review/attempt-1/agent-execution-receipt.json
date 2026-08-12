@@ -1,0 +1,32 @@
+{
+  "agent_config_sha256": "02883e11e4627dc3f8a91c6b289f85c00bc9934277421fd1f1c2927b277c691e",
+  "agent_id": "019feeae-20ab-7053-84ff-033a82bf30c1",
+  "attempt": 1,
+  "capture_method": "codex_tool_result",
+  "completed_at": "2026-08-11T02:39:35.585Z",
+  "created_at": "2026-08-11T02:39:35.585Z",
+  "host_receipt": null,
+  "missing_metadata": [
+    "model",
+    "token_usage"
+  ],
+  "model": null,
+  "model_reasoning_effort": "high",
+  "raw_response_path": "stages/s03-review/attempt-1/raw-response.txt",
+  "raw_response_sha256": "d16b8820f1752322c5ca30e399b0963340ca9c6012906c33869b2580d0d9e9bf",
+  "receipt_id": "agent_receipt-1336c5fbf9724cf9",
+  "role": "growth-review",
+  "run_id": "native-agent-bmr-20260809",
+  "schema_version": "1.2",
+  "stage_id": "s03-review",
+  "stage_json_path": "stages/s03-review/attempt-1/stage.json",
+  "stage_json_sha256": "4393862e6e151fd13cf8d3c368d252ebe3c6bc3409d0172e1d87db426eaee27b",
+  "stage_semantic_sha256": "aa2c4232802d49ca997a2d8f00b174f2b3c0b373cf0761efccab67135312141e",
+  "started_at": "2026-08-11T02:36:29.847Z",
+  "token_usage": {
+    "input_tokens": null,
+    "output_tokens": null,
+    "total_tokens": null
+  },
+  "trust_level": "host_observed"
+}

@@ -9,7 +9,7 @@ import pytest
 
 import runtime_common
 from build_lineage import build
-from conftest import approve_pending, materialize_stage, metric, route_plan, stage_output, write_json
+from conftest import approve_pending, bind_route_inputs, materialize_stage, metric, route_plan, stage_output, write_json
 from runctl import (
     approve,
     audit_run,
@@ -102,7 +102,7 @@ def test_route_cannot_reuse_downstream_without_its_dependency(approved_run, tmp_
         ],
     )
     with pytest.raises(ValueError, match="reusable approved artifact"):
-        set_route(run_dir, write_json(tmp_path / "route-2.json", route))
+        set_route(run_dir, write_json(tmp_path / "route-2.json", bind_route_inputs(run_dir, route)))
 
 
 def test_running_stage_must_be_recovered_before_revision(approved_run) -> None:

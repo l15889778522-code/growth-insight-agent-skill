@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.11", "3.12", "3.13"]
+
+    env:
+      MPLBACKEND: Agg
+      PYTHONUTF8: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+            constraints.txt
+      - name: Install validated dependencies
+        run: python -m pip install -r requirements-dev.txt -c constraints.txt
+      - name: Run offline test suite
+        run: python -m pytest -q

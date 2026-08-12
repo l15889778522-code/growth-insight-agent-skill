@@ -23,7 +23,11 @@
                   "recommendation_id": {"type": "string", "minLength": 1},
                   "text": {"type": "string", "minLength": 1},
                   "metric_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
-                  "evidence_refs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+                  "evidence_refs": {
+                    "type": "array",
+                    "items": {"$ref": "../evidence-ref.schema.json"},
+                    "uniqueItems": true
+                  }
                 }
               }
             },

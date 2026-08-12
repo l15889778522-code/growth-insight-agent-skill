@@ -8,6 +8,8 @@ __pycache__/
 .ruff_cache/
 .coverage
 htmlcov/
+.codex/agents/
+.run.lock
 node_modules/
 dist/
 build/

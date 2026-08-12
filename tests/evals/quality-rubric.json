@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.2",
+  "rubric_version": "1.0",
+  "dimensions": {
+    "business_coverage": "Does the output answer the decision question and preserve approved scope, assumptions, and caveats?",
+    "metric_consistency": "Are metric definitions, versions, formulas, grains, SQL mappings, and downstream uses mutually consistent?",
+    "route_quality": "Does the route include every necessary role and omit roles that add no decision value?",
+    "sql_executability": "Is proposed SQL read-only, bounded, schema-grounded, and executable against the fixed snapshot?",
+    "evidence_traceability": "Can every material fact and recommendation be resolved to immutable evidence with no invented support?"
+  },
+  "anchors": {
+    "0.0": "Missing, contradicted, unsafe, or unsupported.",
+    "0.5": "Partially correct with material omissions or unresolved ambiguity.",
+    "1.0": "Complete, internally consistent, decision-ready, and directly supported."
+  },
+  "procedure": [
+    "Remove mode, model, timing, and Token labels before review.",
+    "Use the same evidence bundle and rubric version for every mode.",
+    "Record one rationale per dimension and list reviewer disagreements before adjudication."
+  ]
+}

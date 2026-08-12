@@ -1,0 +1,39 @@
+{
+  "available_schema": {
+    "accounts": [
+      "account_id",
+      "created_at",
+      "plan",
+      "is_test"
+    ],
+    "events": [
+      "account_id",
+      "event_name",
+      "event_time"
+    ],
+    "subscriptions": [
+      "account_id",
+      "mrr",
+      "status",
+      "start_date"
+    ]
+  },
+  "business_context": {
+    "constraints": [
+      "本次只设计和复核指标，不生成或执行 SQL",
+      "每个阶段都要在本地 smoke 审批后才能进入下一角色"
+    ],
+    "decision": "决定下一季度 onboarding 优化应优先提升首次激活还是激活后的七日留存。",
+    "population": "2026-07-01 至 2026-07-31 创建的非测试账户",
+    "timezone": "Asia/Shanghai"
+  },
+  "question": "为订阅制 B2B 产品定义激活指标，并纳入用户指定的七日留存激活率，然后独立复核指标契约。",
+  "user_metric": {
+    "definition": "首次激活后第 7 天仍至少发生一次 core_action 的账户数 / 首次激活账户数",
+    "metric_id": "seven_day_retained_activation_rate",
+    "requested_dimensions": [
+      "signup_cohort_day",
+      "plan"
+    ]
+  }
+}

@@ -5,14 +5,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import shutil
 import sys
 import tomllib
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from contracts import CURRENT_CONTRACT_VERSION, LEGACY_CONTRACT_VERSIONS
+from evidence import artifact_by_id, resolve_evidence_reference
 from runtime_common import (
     SCHEMA_DIR,
     RunLock,
@@ -32,14 +36,16 @@ from runtime_common import (
     validate_schema,
 )
 from validate_route_plan import validate_route
-from validate_stage_output import validate_stage
+from validate_stage_output import extract_single_json, validate_stage
 
 
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$")
+QUERY_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{1,127}$")
 ARTIFACT_KIND_RE = re.compile(r"^[a-z][a-z0-9_-]{1,63}$")
 STATE_FILE = "run-state.json"
 EVENTS_FILE = "events.jsonl"
 APPROVALS_FILE = "approvals.jsonl"
+EVENT_CHECKPOINT_INTERVAL = 25
 
 ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     "initialized": {"awaiting_route_confirmation", "stopped"},
@@ -82,6 +88,27 @@ def _agent_settings() -> tuple[dict[str, str], dict[str, str | None], dict[str, 
     return hashes, models, settings
 
 
+def _assert_current_agent_config(state: dict[str, Any], role: str) -> None:
+    current_hashes, _, _ = _agent_settings()
+    expected = state.get("runtime", {}).get("agent_config_hashes", {}).get(role)
+    if not expected or current_hashes.get(role) != expected:
+        raise ValueError(f"Agent configuration for {role} changed after the run was initialized.")
+
+
+def _validate_metric_lineage(value: dict[str, Any]) -> None:
+    schema = "metric-lineage-v1.2.schema.json" if value.get("schema_version") == CURRENT_CONTRACT_VERSION else "metric-lineage.schema.json"
+    validate_schema(value, SCHEMA_DIR / schema)
+
+
+def _validate_chart_manifest(value: dict[str, Any]) -> None:
+    schema = (
+        "chart-render-manifest-v1.2.schema.json"
+        if value.get("schema_version") == CURRENT_CONTRACT_VERSION
+        else "chart-render-manifest.schema.json"
+    )
+    validate_schema(value, SCHEMA_DIR / schema)
+
+
 def _elapsed_ms(started_at: str, completed_at: str) -> int:
     started = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
     completed = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
@@ -90,6 +117,155 @@ def _elapsed_ms(started_at: str, completed_at: str) -> int:
 
 def _state_path(run_dir: Path) -> Path:
     return run_dir / STATE_FILE
+
+
+def _event_content_sha256(event: dict[str, Any]) -> str:
+    return sha256_json({key: value for key, value in event.items() if key != "event_sha256"})
+
+
+def _event_chain_sha256(event: dict[str, Any]) -> str:
+    return str(event.get("event_sha256") or sha256_json(event))
+
+
+def _state_delta(before: Any, after: Any, path: tuple[str | int, ...] = ()) -> list[dict[str, Any]]:
+    """Return deterministic operations that reconstruct after from before."""
+    if type(before) is not type(after):
+        return [{"op": "set", "path": list(path), "value": deepcopy(after)}]
+    if isinstance(before, dict):
+        operations: list[dict[str, Any]] = []
+        for key in sorted(set(before) - set(after)):
+            operations.append({"op": "remove", "path": [*path, key]})
+        for key in sorted(set(before) & set(after)):
+            operations.extend(_state_delta(before[key], after[key], (*path, key)))
+        for key in sorted(set(after) - set(before)):
+            operations.append({"op": "set", "path": [*path, key], "value": deepcopy(after[key])})
+        return operations
+    if isinstance(before, list):
+        operations = []
+        for index in range(min(len(before), len(after))):
+            operations.extend(_state_delta(before[index], after[index], (*path, index)))
+        if len(after) < len(before):
+            operations.append({"op": "truncate", "path": list(path), "length": len(after)})
+        else:
+            for index in range(len(before), len(after)):
+                operations.append({"op": "set", "path": [*path, index], "value": deepcopy(after[index])})
+        return operations
+    if before != after:
+        return [{"op": "set", "path": list(path), "value": deepcopy(after)}]
+    return []
+
+
+def _delta_container(root: Any, path: list[str | int]) -> tuple[Any, str | int]:
+    if not path:
+        raise ValueError("A state-delta operation requires a non-root target.")
+    current = root
+    for part in path[:-1]:
+        if isinstance(current, dict):
+            if not isinstance(part, str) or part not in current:
+                raise ValueError(f"State-delta path does not exist: {path}")
+            current = current[part]
+        elif isinstance(current, list):
+            if not isinstance(part, int) or isinstance(part, bool) or part < 0 or part >= len(current):
+                raise ValueError(f"State-delta list path is invalid: {path}")
+            current = current[part]
+        else:
+            raise ValueError(f"State-delta path crosses a scalar value: {path}")
+    return current, path[-1]
+
+
+def _delta_target(root: Any, path: list[str | int]) -> Any:
+    current = root
+    for part in path:
+        if isinstance(current, dict):
+            if not isinstance(part, str) or part not in current:
+                raise ValueError(f"State-delta path does not exist: {path}")
+            current = current[part]
+        elif isinstance(current, list):
+            if not isinstance(part, int) or isinstance(part, bool) or part < 0 or part >= len(current):
+                raise ValueError(f"State-delta list path is invalid: {path}")
+            current = current[part]
+        else:
+            raise ValueError(f"State-delta path crosses a scalar value: {path}")
+    return current
+
+
+def _apply_state_delta(before: dict[str, Any], operations: Any) -> dict[str, Any]:
+    if not isinstance(operations, list):
+        raise ValueError("state_delta must be an array of operations.")
+    state: Any = deepcopy(before)
+    for operation in operations:
+        if not isinstance(operation, dict) or not isinstance(operation.get("path"), list):
+            raise ValueError("Each state-delta operation requires an object and path array.")
+        kind = operation.get("op")
+        path = operation["path"]
+        if kind == "set" and not path:
+            if "value" not in operation:
+                raise ValueError("A set operation requires value.")
+            state = deepcopy(operation["value"])
+            continue
+        if kind == "truncate":
+            target = _delta_target(state, path)
+            length = operation.get("length")
+            if (
+                not isinstance(target, list)
+                or not isinstance(length, int)
+                or isinstance(length, bool)
+                or length < 0
+                or length > len(target)
+            ):
+                raise ValueError("A truncate operation requires an existing list and a valid shorter length.")
+            del target[length:]
+            continue
+        parent, key = _delta_container(state, path)
+        if kind == "set":
+            if "value" not in operation:
+                raise ValueError("A set operation requires value.")
+            value = deepcopy(operation["value"])
+            if isinstance(parent, dict) and isinstance(key, str):
+                parent[key] = value
+            elif isinstance(parent, list) and isinstance(key, int) and not isinstance(key, bool):
+                if key == len(parent):
+                    parent.append(value)
+                elif 0 <= key < len(parent):
+                    parent[key] = value
+                else:
+                    raise ValueError(f"State-delta list set is not contiguous: {path}")
+            else:
+                raise ValueError(f"State-delta set target is invalid: {path}")
+        elif kind == "remove":
+            if isinstance(parent, dict) and isinstance(key, str) and key in parent:
+                del parent[key]
+            elif isinstance(parent, list) and isinstance(key, int) and not isinstance(key, bool) and 0 <= key < len(parent):
+                parent.pop(key)
+            else:
+                raise ValueError(f"State-delta remove target is invalid: {path}")
+        else:
+            raise ValueError(f"Unsupported state-delta operation: {kind}")
+    if not isinstance(state, dict):
+        raise ValueError("A replayed run state must be an object.")
+    return state
+
+
+def _event_state_after(event: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, Any]:
+    encoding = event.get("state_encoding")
+    has_snapshot = "state_after" in event
+    has_delta = "state_delta" in event
+    if encoding is None:
+        if not has_snapshot or has_delta:
+            raise ValueError("A legacy event requires exactly one recoverable state snapshot.")
+        snapshot = event.get("state_after")
+        if not isinstance(snapshot, dict):
+            raise ValueError("The recoverable state snapshot is not an object.")
+        return deepcopy(snapshot)
+    if encoding == "snapshot":
+        if not has_snapshot or has_delta or not isinstance(event.get("state_after"), dict):
+            raise ValueError("A checkpoint event requires exactly one object state_after.")
+        return deepcopy(event["state_after"])
+    if encoding == "delta":
+        if has_snapshot or not has_delta or previous is None:
+            raise ValueError("A delta event requires a previous state and exactly one state_delta.")
+        return _apply_state_delta(previous, event["state_delta"])
+    raise ValueError(f"Unsupported state encoding: {encoding}")
 
 
 def _assert_state_head(run_dir: Path, state: dict[str, Any]) -> None:
@@ -103,13 +279,17 @@ def _assert_state_head(run_dir: Path, state: dict[str, Any]) -> None:
         raise ValueError("run-state.json does not match the last committed event; run recover before continuing.")
 
 
-def load_state(run_dir: Path, *, authenticate: bool = True) -> dict[str, Any]:
+def load_state(run_dir: Path, *, authenticate: bool = True, for_update: bool = False) -> dict[str, Any]:
     state = load_json(_state_path(run_dir))
     if not isinstance(state, dict):
         raise ValueError("run-state.json must contain an object.")
     validate_schema(state, SCHEMA_DIR / "run-state.schema.json")
     if authenticate:
         _assert_state_head(run_dir, state)
+    if for_update and state.get("schema_version") != CURRENT_CONTRACT_VERSION:
+        raise ValueError(
+            f"Run contract {state.get('schema_version')!r} is read-only; run migrate before modifying it."
+        )
     return state
 
 
@@ -123,6 +303,8 @@ def _set_status(state: dict[str, Any], target: str) -> None:
 
 
 def _commit(run_dir: Path, state: dict[str, Any], event_type: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    if state.get("schema_version") != CURRENT_CONTRACT_VERSION and event_type != "contract_migrated":
+        raise ValueError("Legacy runs must be explicitly migrated before mutation.")
     previous_path = _state_path(run_dir)
     previous_state = load_json(previous_path) if previous_path.is_file() else None
     if previous_state is not None:
@@ -138,8 +320,10 @@ def _commit(run_dir: Path, state: dict[str, Any], event_type: str, payload: dict
     state["updated_at"] = utc_now()
     validate_schema(state, SCHEMA_DIR / "run-state.schema.json")
     state_hash = sha256_json(state)
+    events = read_jsonl(run_dir / EVENTS_FILE)
+    previous_event_sha256 = _event_chain_sha256(events[-1]) if events else None
     event = {
-        "schema_version": "1.1",
+        "schema_version": CURRENT_CONTRACT_VERSION,
         "event_id": state["last_event_id"],
         "event_type": event_type,
         "run_id": state["run_id"],
@@ -147,10 +331,17 @@ def _commit(run_dir: Path, state: dict[str, Any], event_type: str, payload: dict
         "created_at": state["updated_at"],
         "status": state["status"],
         "previous_state_sha256": previous_hash,
+        "previous_event_sha256": previous_event_sha256,
         "state_sha256": state_hash,
-        "state_after": deepcopy(state),
         "payload": payload or {},
     }
+    if previous_state is None or state["last_event_id"] % EVENT_CHECKPOINT_INTERVAL == 0:
+        event["state_encoding"] = "snapshot"
+        event["state_after"] = deepcopy(state)
+    else:
+        event["state_encoding"] = "delta"
+        event["state_delta"] = _state_delta(previous_state, state)
+    event["event_sha256"] = _event_content_sha256(event)
     append_jsonl(run_dir / EVENTS_FILE, event)
     atomic_write_json(_state_path(run_dir), state)
     return event
@@ -165,8 +356,12 @@ def initialize_run(runs_root: Path, run_id: str, request: dict[str, Any], model_
         (run_dir / relative).mkdir()
     now = utc_now()
     agent_hashes, resolved_models, agent_settings = _agent_settings()
+    request_path = run_dir / "request.json"
+    atomic_write_json(request_path, request)
+    request_file_sha256 = sha256_file(request_path)
+    request_artifact_id = f"request_{request_file_sha256[:16]}"
     state: dict[str, Any] = {
-        "schema_version": "1.1",
+        "schema_version": CURRENT_CONTRACT_VERSION,
         "run_id": run_id,
         "revision": 0,
         "status": "initialized",
@@ -177,6 +372,7 @@ def initialize_run(runs_root: Path, run_id: str, request: dict[str, Any], model_
             "resolved_models": resolved_models,
             "agent_settings": agent_settings,
             "surface": None,
+            "contract_version": CURRENT_CONTRACT_VERSION,
         },
         "route_id": None,
         "route_revision": 0,
@@ -188,16 +384,96 @@ def initialize_run(runs_root: Path, run_id: str, request: dict[str, Any], model_
         "pending_approval": None,
         "pending_query": None,
         "pending_metric_edit": None,
-        "artifacts": [],
+        "execution_leases": [],
+        "artifacts": [
+            {
+                "artifact_id": request_artifact_id,
+                "kind": "request",
+                "path": "request.json",
+                "sha256": request_file_sha256,
+                "metadata": {"semantic_sha256": sha256_json(request)},
+            }
+        ],
         "data_source": None,
         "last_event_id": 0,
         "resume_status": None,
         "created_at": now,
         "updated_at": now,
     }
-    atomic_write_json(run_dir / "request.json", request)
-    _commit(run_dir, state, "run_initialized", {"request_sha256": sha256_json(request)})
+    _commit(
+        run_dir,
+        state,
+        "run_initialized",
+        {
+            "request_artifact_id": request_artifact_id,
+            "request_file_sha256": request_file_sha256,
+            "request_semantic_sha256": sha256_json(request),
+        },
+    )
     return run_dir
+
+
+def migrate_run(run_dir: Path) -> dict[str, Any]:
+    with RunLock(run_dir):
+        state = load_state(run_dir)
+        source_version = state.get("schema_version")
+        if source_version == CURRENT_CONTRACT_VERSION:
+            return state
+        if source_version not in LEGACY_CONTRACT_VERSIONS:
+            raise ValueError(f"Unsupported run contract version: {source_version!r}")
+        if state["status"] == "completed":
+            raise ValueError("Completed legacy runs remain read-only; clone the run before migration.")
+
+        request_path = run_dir / "request.json"
+        if not request_path.is_file():
+            raise ValueError("Legacy run has no request.json to bind during migration.")
+        request_hash = sha256_file(request_path)
+        if not any(item.get("kind") == "request" for item in state.get("artifacts", [])):
+            state["artifacts"].append(
+                {
+                    "artifact_id": f"request_{request_hash[:16]}",
+                    "kind": "request",
+                    "path": "request.json",
+                    "sha256": request_hash,
+                    "metadata": {"migrated_from": source_version},
+                }
+            )
+
+        stage_artifact_ids: dict[tuple[str, int], str] = {}
+        for record in state.get("artifacts", []):
+            if "stage_id" not in record:
+                continue
+            key = (record["stage_id"], int(record["revision"]))
+            artifact_id = record.get("artifact_id") or f"legacy_{key[0]}_r{key[1]}"
+            record["artifact_id"] = artifact_id
+            stage_artifact_ids[key] = artifact_id
+        for stage in state.get("stages", []):
+            artifact = stage.get("artifact")
+            if artifact:
+                key = (stage["stage_id"], int(artifact["revision"]))
+                artifact["artifact_id"] = stage_artifact_ids.get(key, f"legacy_{key[0]}_r{key[1]}")
+
+        previous_agent_hashes = deepcopy(state["runtime"].get("agent_config_hashes", {}))
+        current_agent_hashes, current_models, current_settings = _agent_settings()
+        state["schema_version"] = CURRENT_CONTRACT_VERSION
+        state["runtime"]["contract_version"] = CURRENT_CONTRACT_VERSION
+        state["runtime"]["agent_config_hashes"] = current_agent_hashes
+        state["runtime"]["resolved_models"] = current_models
+        state["runtime"]["agent_settings"] = current_settings
+        state.setdefault("execution_leases", [])
+        return_state = state
+        _commit(
+            run_dir,
+            state,
+            "contract_migrated",
+            {
+                "from_version": source_version,
+                "to_version": CURRENT_CONTRACT_VERSION,
+                "previous_agent_config_hashes": previous_agent_hashes,
+                "current_agent_config_hashes": current_agent_hashes,
+            },
+        )
+        return return_state
 
 
 def _find_stage(state: dict[str, Any], stage_id: str) -> dict[str, Any]:
@@ -216,6 +492,10 @@ def _verified_stage_output(run_dir: Path, stage: dict[str, Any]) -> dict[str, An
         "markdown": (artifact["markdown_path"], artifact["markdown_sha256"]),
         "validation": (artifact["validation_path"], artifact["validation_sha256"]),
     }
+    if artifact.get("receipt_path") and artifact.get("receipt_sha256"):
+        paths["agent receipt"] = (artifact["receipt_path"], artifact["receipt_sha256"])
+    if artifact.get("raw_response_path") and artifact.get("raw_response_sha256"):
+        paths["raw response"] = (artifact["raw_response_path"], artifact["raw_response_sha256"])
     resolved: dict[str, Path] = {}
     for label, (relative, expected_hash) in paths.items():
         path = resolve_within(run_dir, relative)
@@ -249,7 +529,31 @@ def _load_verified_route(run_dir: Path, state: dict[str, Any], *, require_execut
     errors, _ = validate_route(route, require_executable=require_executable)
     if errors:
         raise ValueError("Current route is invalid:\n- " + "\n- ".join(errors))
+    _validate_route_bindings(run_dir, state, route)
     return route
+
+
+def _validate_route_bindings(run_dir: Path, state: dict[str, Any], route: dict[str, Any]) -> None:
+    if route.get("schema_version") != CURRENT_CONTRACT_VERSION:
+        return
+
+    def validate_bindings(container: dict[str, Any], label: str) -> None:
+        for binding in container.get("input_bindings", []):
+            record = artifact_by_id(state, binding["artifact_id"])
+            if record.get("superseded_by"):
+                raise ValueError(f"{label} input {binding['input_name']!r} is bound to a superseded artifact.")
+            record_path = record.get("path") or record.get("json_path")
+            if record_path != binding["path"] or record.get("sha256") != binding["sha256"]:
+                raise ValueError(f"{label} input {binding['input_name']!r} does not match its registered artifact.")
+            path = resolve_within(run_dir, binding["path"])
+            if not path.is_file() or sha256_file(path) != binding["sha256"]:
+                raise ValueError(f"{label} input {binding['input_name']!r} artifact is missing or changed.")
+            if binding["source"] == "request" and record.get("kind") != "request":
+                raise ValueError(f"{label} input {binding['input_name']!r} claims request source for a non-request artifact.")
+
+    validate_bindings(route, "Route")
+    if isinstance(route.get("fallback_route"), dict):
+        validate_bindings(route["fallback_route"], "Fallback route")
 
 
 def _next_pending_stage(state: dict[str, Any]) -> str | None:
@@ -269,11 +573,13 @@ def set_route(run_dir: Path, route_file: Path) -> dict[str, Any]:
     route_bytes = (json.dumps(route, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
     route_hash = sha256_bytes(route_bytes)
     with RunLock(run_dir):
-        state = load_state(run_dir)
+        state = load_state(run_dir, for_update=True)
+        _validate_route_bindings(run_dir, state, route)
         if state["status"] == "completed":
             raise ValueError("Completed run cannot be rerouted.")
         if state.get("current_stage") or any(item["status"] == "running" for item in state["stages"]):
             raise ValueError("Cannot replace the route while a stage is running.")
+        aborted_leases = _abort_active_execution_leases(state, "route_revision")
         saved_route = run_dir / "route-plan.json"
         pending = state.get("pending_approval") or {}
         if (
@@ -362,13 +668,13 @@ def set_route(run_dir: Path, route_file: Path) -> dict[str, Any]:
             "subject_revision": route["route_revision"],
             "subject_sha256": route_hash,
         }
-        _commit(run_dir, state, "route_proposed", {"route_sha256": route_hash})
+        _commit(run_dir, state, "route_proposed", {"route_sha256": route_hash, "aborted_leases": aborted_leases})
         return state
 
 
 def start_stage(run_dir: Path, stage_id: str) -> Path:
     with RunLock(run_dir):
-        state = load_state(run_dir)
+        state = load_state(run_dir, for_update=True)
         if state["status"] not in {"running", "revising"}:
             raise ValueError(f"Cannot start a stage while run status is {state['status']}.")
         if any(item["status"] == "running" for item in state["stages"]):
@@ -377,12 +683,13 @@ def start_stage(run_dir: Path, stage_id: str) -> Path:
             raise ValueError("A pending route, stage, or rollback approval must be resolved before a stage can start.")
         if state.get("pending_query"):
             raise ValueError("A prepared query must finish or be revised before another stage can start.")
-        _load_verified_route(run_dir, state, require_executable=True)
+        route = _load_verified_route(run_dir, state, require_executable=True)
         if state.get("pending_stage") != stage_id:
             raise ValueError(f"The only startable stage is {state.get('pending_stage')!r}.")
         stage = _find_stage(state, stage_id)
         if stage["status"] not in {"pending", "revising", "stale"}:
             raise ValueError(f"Stage {stage_id} cannot start from status {stage['status']}.")
+        _assert_current_agent_config(state, stage["role"])
         for dependency in stage["depends_on"]:
             dependency_stage = _find_stage(state, dependency)
             if dependency_stage["status"] != "approved":
@@ -420,16 +727,30 @@ def start_stage(run_dir: Path, stage_id: str) -> Path:
             "completed_at": None,
             "elapsed_ms": None,
             "thread_id": None,
+            "agent_id": None,
             "model": state["runtime"]["resolved_models"].get(stage["role"]),
             "model_reasoning_effort": settings.get("model_reasoning_effort"),
             "token_usage": None,
             "failure_class": None,
+            "receipt_path": None,
+            "receipt_sha256": None,
+            "raw_response_path": None,
+            "raw_response_sha256": None,
+            "provenance_trust_level": None,
+            "capture_method": None,
+            "missing_metadata": [],
         }
         stage["input_hashes"] = {
             dependency: _find_stage(state, dependency)["artifact"]["sha256"]
             for dependency in stage["depends_on"]
             if _find_stage(state, dependency).get("artifact")
         }
+        stage["input_hashes"].update(
+            {
+                f"artifact:{binding['artifact_id']}": binding["sha256"]
+                for binding in route.get("input_bindings", [])
+            }
+        )
         state["current_stage"] = stage_id
         state["pending_stage"] = None
         state["pending_approval"] = None
@@ -449,11 +770,13 @@ def record_agent_runtime(
     output_tokens: int | None,
 ) -> dict[str, Any]:
     with RunLock(run_dir):
-        state = load_state(run_dir)
+        state = load_state(run_dir, for_update=True)
         stage = _find_stage(state, stage_id)
         if stage["status"] != "running" or not stage.get("runtime"):
             raise ValueError(f"Stage {stage_id} has no active Agent runtime to update.")
         runtime = stage["runtime"]
+        if runtime.get("receipt_path"):
+            raise ValueError("Agent runtime metadata is immutable after an execution receipt is recorded.")
         runtime["thread_id"] = thread_id
         runtime["model"] = model
         runtime["token_usage"] = {
@@ -471,6 +794,181 @@ def record_agent_runtime(
         return runtime
 
 
+def record_agent_receipt(
+    run_dir: Path,
+    stage_id: str,
+    raw_response_path: Path,
+    stage_json_path: Path,
+    agent_id: str | None = None,
+    model: str | None = None,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    capture_method: str = "root_cli",
+) -> dict[str, Any]:
+    if capture_method not in {"root_cli", "codex_tool_result"}:
+        raise ValueError("Agent receipt capture_method must be root_cli or codex_tool_result.")
+    if capture_method == "codex_tool_result" and not agent_id:
+        raise ValueError("codex_tool_result receipts require the native Agent ID returned by Codex.")
+    with RunLock(run_dir):
+        state = load_state(run_dir, for_update=True)
+        stage = _find_stage(state, stage_id)
+        if stage["status"] != "running" or not stage.get("runtime"):
+            raise ValueError(f"Stage {stage_id} has no active Agent attempt to receive a receipt.")
+        runtime = stage["runtime"]
+        if runtime.get("receipt_path"):
+            raise ValueError("The active Agent attempt already has an execution receipt.")
+        _assert_current_agent_config(state, stage["role"])
+        attempt_dir = (run_dir / "stages" / stage_id / f"attempt-{stage['attempt']}").resolve()
+        raw_response_path = resolve_within(run_dir, raw_response_path)
+        stage_json_path = resolve_within(run_dir, stage_json_path)
+        if raw_response_path.parent != attempt_dir or stage_json_path.parent != attempt_dir:
+            raise ValueError("Agent receipt files must be inside the active stage attempt directory.")
+        if not raw_response_path.is_file() or not stage_json_path.is_file():
+            raise ValueError("Agent receipt requires both raw response and parsed stage JSON files.")
+
+        stage_value = load_json(stage_json_path)
+        if not isinstance(stage_value, dict):
+            raise ValueError("Agent receipt stage JSON must contain an object.")
+        raw_value = extract_single_json(raw_response_path.read_text(encoding="utf-8"))
+        if sha256_json(raw_value) != sha256_json(stage_value):
+            raise ValueError("Raw Agent response does not match the parsed stage JSON.")
+        errors = validate_stage(
+            stage_value,
+            stage["role"],
+            state["run_id"],
+            stage_id,
+            stage["attempt"],
+            state["runtime"]["contract_version"],
+        )
+        if errors:
+            raise ValueError("Agent receipt cannot bind an invalid stage response:\n- " + "\n- ".join(errors))
+
+        token_usage = {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens if input_tokens is not None and output_tokens is not None else None,
+        }
+        missing_metadata = []
+        if not agent_id:
+            missing_metadata.append("agent_id")
+        if not model:
+            missing_metadata.append("model")
+        if input_tokens is None or output_tokens is None:
+            missing_metadata.append("token_usage")
+        completed_at = utc_now()
+        relative_raw = str(raw_response_path.relative_to(run_dir.resolve())).replace("\\", "/")
+        relative_stage = str(stage_json_path.relative_to(run_dir.resolve())).replace("\\", "/")
+        receipt = {
+            "schema_version": CURRENT_CONTRACT_VERSION,
+            "receipt_id": new_id("agent_receipt"),
+            "run_id": state["run_id"],
+            "stage_id": stage_id,
+            "role": stage["role"],
+            "attempt": stage["attempt"],
+            "agent_config_sha256": state["runtime"]["agent_config_hashes"][stage["role"]],
+            "agent_id": agent_id,
+            "raw_response_path": relative_raw,
+            "raw_response_sha256": sha256_file(raw_response_path),
+            "stage_json_path": relative_stage,
+            "stage_json_sha256": sha256_file(stage_json_path),
+            "stage_semantic_sha256": sha256_json(stage_value),
+            "started_at": runtime["started_at"],
+            "completed_at": completed_at,
+            "model": model,
+            "model_reasoning_effort": runtime.get("model_reasoning_effort"),
+            "token_usage": token_usage,
+            "missing_metadata": missing_metadata,
+            "capture_method": capture_method,
+            "trust_level": "host_observed" if capture_method == "codex_tool_result" else "self_asserted",
+            "host_receipt": None,
+            "created_at": completed_at,
+        }
+        validate_schema(receipt, SCHEMA_DIR / "agent-execution-receipt.schema.json")
+        receipt_path = attempt_dir / "agent-execution-receipt.json"
+        atomic_write_json(receipt_path, receipt)
+        relative_receipt = str(receipt_path.relative_to(run_dir.resolve())).replace("\\", "/")
+        runtime.update(
+            {
+                "thread_id": agent_id,
+                "agent_id": agent_id,
+                "model": model,
+                "token_usage": token_usage,
+                "receipt_path": relative_receipt,
+                "receipt_sha256": sha256_file(receipt_path),
+                "raw_response_path": relative_raw,
+                "raw_response_sha256": receipt["raw_response_sha256"],
+                "provenance_trust_level": receipt["trust_level"],
+                "capture_method": capture_method,
+                "missing_metadata": missing_metadata,
+            }
+        )
+        state["runtime"]["resolved_models"][stage["role"]] = model
+        _commit(
+            run_dir,
+            state,
+            "agent_execution_receipt_recorded",
+            {
+                "stage_id": stage_id,
+                "attempt": stage["attempt"],
+                "receipt_id": receipt["receipt_id"],
+                "receipt_sha256": runtime["receipt_sha256"],
+                "agent_id": agent_id,
+                "trust_level": receipt["trust_level"],
+            },
+        )
+        return receipt
+
+
+def _verify_agent_receipt(
+    run_dir: Path,
+    state: dict[str, Any],
+    stage: dict[str, Any],
+    stage_json_path: Path,
+    stage_value: dict[str, Any],
+) -> dict[str, Any]:
+    runtime = stage.get("runtime") or {}
+    receipt_relative = runtime.get("receipt_path")
+    receipt_sha256 = runtime.get("receipt_sha256")
+    if not receipt_relative or not receipt_sha256:
+        raise ValueError("Stage has no Agent execution receipt for the active attempt.")
+    receipt_path = resolve_within(run_dir, receipt_relative)
+    if not receipt_path.is_file() or sha256_file(receipt_path) != receipt_sha256:
+        raise ValueError("Agent execution receipt is missing or changed.")
+    receipt = load_json(receipt_path)
+    validate_schema(receipt, SCHEMA_DIR / "agent-execution-receipt.schema.json")
+    expected = {
+        "run_id": state["run_id"],
+        "stage_id": stage["stage_id"],
+        "role": stage["role"],
+        "attempt": stage["attempt"],
+        "agent_config_sha256": state["runtime"]["agent_config_hashes"][stage["role"]],
+        "stage_json_sha256": sha256_file(stage_json_path),
+        "stage_semantic_sha256": sha256_json(stage_value),
+    }
+    for key, value in expected.items():
+        if receipt.get(key) != value:
+            raise ValueError(f"Agent execution receipt {key} does not match the active stage attempt.")
+    raw_path = resolve_within(run_dir, receipt["raw_response_path"])
+    if not raw_path.is_file() or sha256_file(raw_path) != receipt["raw_response_sha256"]:
+        raise ValueError("Raw Agent response is missing or changed.")
+    raw_value = extract_single_json(raw_path.read_text(encoding="utf-8"))
+    if sha256_json(raw_value) != sha256_json(stage_value):
+        raise ValueError("Raw Agent response no longer matches the stage JSON.")
+    if receipt.get("trust_level") == "host_signed" and not receipt.get("host_receipt"):
+        raise ValueError("Agent receipt claims host_signed without a verifiable host receipt.")
+    expected_missing = []
+    if not receipt.get("agent_id"):
+        expected_missing.append("agent_id")
+    if not receipt.get("model"):
+        expected_missing.append("model")
+    usage = receipt.get("token_usage") or {}
+    if usage.get("input_tokens") is None or usage.get("output_tokens") is None:
+        expected_missing.append("token_usage")
+    if receipt.get("missing_metadata") != expected_missing:
+        raise ValueError("Agent receipt missing_metadata does not match the metadata actually present.")
+    return receipt
+
+
 def _load_current_role_output(run_dir: Path, state: dict[str, Any], role: str) -> dict[str, Any] | None:
     candidates = [
         item
@@ -482,9 +980,75 @@ def _load_current_role_output(run_dir: Path, state: dict[str, Any], role: str) -
     return _verified_stage_output(run_dir, candidates[-1])
 
 
+def _current_query_quality_warnings(
+    run_dir: Path,
+    state: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    latest_by_query: dict[str, tuple[int, dict[str, Any]]] = {}
+    seen_revisions: set[tuple[str, int]] = set()
+    errors: list[str] = []
+    for artifact in state["artifacts"]:
+        if artifact.get("kind") != "query_manifest" or artifact.get("superseded_by"):
+            continue
+        metadata = artifact.get("metadata", {})
+        query_id = metadata.get("query_id")
+        query_revision = metadata.get("query_revision")
+        if not isinstance(query_id, str) or not query_id or not isinstance(query_revision, int) or query_revision < 1:
+            errors.append(f"Query manifest {artifact.get('artifact_id')} has invalid query identity metadata.")
+            continue
+        key = (query_id, query_revision)
+        if key in seen_revisions:
+            errors.append(f"Query {query_id} has duplicate active manifest revision {query_revision}.")
+            continue
+        seen_revisions.add(key)
+        prior = latest_by_query.get(query_id)
+        if prior is None or query_revision > prior[0]:
+            latest_by_query[query_id] = (query_revision, artifact)
+
+    warnings: list[dict[str, Any]] = []
+    for query_id in sorted(latest_by_query):
+        query_revision, artifact = latest_by_query[query_id]
+        try:
+            path = resolve_within(run_dir, artifact["path"])
+            if not path.is_file() or sha256_file(path) != artifact["sha256"]:
+                raise ValueError(f"Latest query manifest is missing or changed: {artifact['path']}")
+            manifest = load_json(path)
+            validate_schema(manifest, SCHEMA_DIR / "query-manifest.schema.json")
+            if manifest.get("query_id") != query_id:
+                raise ValueError(f"Query manifest {artifact['artifact_id']} disagrees with its query identity metadata.")
+            for warning in manifest["quality_warnings"]:
+                warnings.append(
+                    {
+                        "artifact_id": artifact["artifact_id"],
+                        "sha256": artifact["sha256"],
+                        "query_id": query_id,
+                        "query_revision": query_revision,
+                        "warning": warning,
+                    }
+                )
+        except (KeyError, OSError, ValueError) as exc:
+            errors.append(str(exc))
+    return warnings, errors
+
+
 def _validate_stage_context(run_dir: Path, state: dict[str, Any], stage: dict[str, Any], value: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     for dependency, expected_hash in stage["input_hashes"].items():
+        if dependency.startswith("artifact:"):
+            artifact_id = dependency.removeprefix("artifact:")
+            try:
+                current = artifact_by_id(state, artifact_id)
+            except ValueError as exc:
+                errors.append(str(exc))
+                continue
+            path_value = current.get("path") or current.get("json_path")
+            try:
+                path = resolve_within(run_dir, path_value)
+                if current.get("sha256") != expected_hash or not path.is_file() or sha256_file(path) != expected_hash:
+                    errors.append(f"Bound route input {artifact_id} changed while the stage was running.")
+            except (TypeError, ValueError) as exc:
+                errors.append(str(exc))
+            continue
         current = _find_stage(state, dependency).get("artifact")
         if not current or current["sha256"] != expected_hash:
             errors.append(f"Approved input {dependency} changed while the stage was running.")
@@ -632,21 +1196,6 @@ def _validate_stage_context(run_dir: Path, state: dict[str, Any], stage: dict[st
                 errors.append(f"Registered result artifact is missing or changed: {record['path']}")
         except (KeyError, ValueError) as exc:
             errors.append(str(exc))
-    artifact_paths = {
-        item.get("path")
-        for item in state["artifacts"]
-        if item.get("path") and not item.get("superseded_by")
-    }
-    approved_stage_ids = {
-        item["stage_id"]
-        for item in state["stages"]
-        if item["status"] in {"approved", "completed"}
-    }
-
-    def evidence_resolves(reference: str) -> bool:
-        path_part = reference.split("#", 1)[0]
-        return path_part in artifact_paths or any(reference.startswith(stage_id + ":") for stage_id in approved_stage_ids)
-
     evidence_items = []
     if role == "growth-insight":
         evidence_items.extend(payload.get("observations", []))
@@ -655,16 +1204,22 @@ def _validate_stage_context(run_dir: Path, state: dict[str, Any], stage: dict[st
         evidence_items.extend(payload.get("findings", []))
     elif role == "growth-report":
         evidence_items.extend(payload.get("recommendations", []))
-    unresolved_refs = sorted(
-        {
-            reference
-            for item in evidence_items
-            for reference in item.get("evidence_refs", [])
-            if not evidence_resolves(reference)
-        }
-    )
-    if unresolved_refs:
-        errors.append(f"{role} output has unresolved evidence references: " + ", ".join(unresolved_refs))
+    evidence_references: list[Any] = list(value.get("evidence", []))
+    for calculation in value.get("calculations", []):
+        if isinstance(calculation, dict):
+            evidence_references.extend(calculation.get("input_evidence_refs", []))
+    for item in evidence_items:
+        evidence_references.extend(item.get("evidence_refs", []))
+    for reference in evidence_references:
+        try:
+            resolve_evidence_reference(
+                run_dir,
+                state,
+                reference,
+                allow_legacy=value.get("schema_version") in LEGACY_CONTRACT_VERSIONS,
+            )
+        except (OSError, ValueError) as exc:
+            errors.append(f"{role} output has an unresolved evidence reference: {exc}")
 
     if role == "growth-insight" and not data_records:
         if value.get("facts") or value.get("calculations") or payload.get("observations"):
@@ -695,6 +1250,13 @@ def _validate_stage_context(run_dir: Path, state: dict[str, Any], stage: dict[st
 
     if role == "growth-review":
         decision = payload.get("decision")
+        expected_quality_warnings, quality_errors = _current_query_quality_warnings(run_dir, state)
+        errors.extend(quality_errors)
+        if payload.get("data_quality_warnings", []) != expected_quality_warnings:
+            errors.append(
+                "Review data_quality_warnings must exactly match the latest registered query manifests: "
+                + json.dumps(expected_quality_warnings, ensure_ascii=False, sort_keys=True)
+            )
         metric_stages = [
             item
             for item in state["stages"]
@@ -715,6 +1277,10 @@ def _validate_stage_context(run_dir: Path, state: dict[str, Any], stage: dict[st
                     errors.append("Registered metric lineage is missing or changed.")
                 else:
                     lineage = load_json(lineage_path)
+                    try:
+                        _validate_metric_lineage(lineage)
+                    except ValueError as exc:
+                        errors.append(str(exc))
                     expected_breaks = {
                         f"{metric['metric_id']}:{lineage_break}"
                         for metric in lineage.get("metrics", [])
@@ -747,6 +1313,11 @@ def _validate_stage_context(run_dir: Path, state: dict[str, Any], stage: dict[st
             errors.append("Report input does not include an approved passing Review artifact.")
         else:
             required_caveats = [item for item in review.get("risks", []) if isinstance(item, str)]
+            if review.get("role_payload", {}).get("decision") == "PASS_WITH_RISKS":
+                required_caveats.extend(
+                    f"[{item['finding_id']}] {item['summary']}"
+                    for item in review.get("role_payload", {}).get("findings", [])
+                )
             caveats = payload.get("caveats", [])
             missing = [item for item in required_caveats if item not in caveats]
             if missing:
@@ -756,14 +1327,26 @@ def _validate_stage_context(run_dir: Path, state: dict[str, Any], stage: dict[st
 
 def record_stage(run_dir: Path, stage_json: Path, stage_markdown: Path, validation_report: Path) -> dict[str, Any]:
     with RunLock(run_dir):
-        state = load_state(run_dir)
+        state = load_state(run_dir, for_update=True)
         if state["status"] != "running" or not state["current_stage"]:
             raise ValueError("No running stage is available to record.")
         stage = _find_stage(state, state["current_stage"])
+        resolved_paths = [resolve_within(run_dir, path) for path in (stage_json, stage_markdown, validation_report)]
+        for resolved in resolved_paths:
+            if not resolved.is_file():
+                raise ValueError(f"Required stage artifact does not exist: {resolved}")
+        stage_json, stage_markdown, validation_report = resolved_paths
         value = load_json(stage_json)
         if not isinstance(value, dict):
             raise ValueError("Stage JSON must contain an object.")
-        errors = validate_stage(value, stage["role"], state["run_id"], stage["stage_id"], stage["attempt"])
+        errors = validate_stage(
+            value,
+            stage["role"],
+            state["run_id"],
+            stage["stage_id"],
+            stage["attempt"],
+            state["runtime"]["contract_version"],
+        )
         errors.extend(_validate_stage_context(run_dir, state, stage, value))
         if errors:
             _set_status(state, "failed")
@@ -774,19 +1357,16 @@ def record_stage(run_dir: Path, stage_json: Path, stage_markdown: Path, validati
             stage["runtime"]["failure_class"] = "stage_validation_failed"
             _commit(run_dir, state, "stage_validation_failed", {"stage_id": stage["stage_id"], "errors": errors})
             raise ValueError("Stage output is invalid:\n- " + "\n- ".join(errors))
-        resolved_paths = [resolve_within(run_dir, path) for path in (stage_json, stage_markdown, validation_report)]
-        for resolved in resolved_paths:
-            if not resolved.is_file():
-                raise ValueError(f"Required stage artifact does not exist: {resolved}")
-        stage_json, stage_markdown, validation_report = resolved_paths
         validation = load_json(validation_report)
         if not isinstance(validation, dict) or not validation.get("valid"):
             raise ValueError("Validation report must record a successful stage validation.")
         if validation.get("role") != stage["role"] or validation.get("stage_sha256") != sha256_json(value):
             raise ValueError("Validation report does not match the current stage artifact.")
+        receipt = _verify_agent_receipt(run_dir, state, stage, stage_json, value)
         _set_status(state, "validating")
         artifact_hash = sha256_file(stage_json)
         artifact = {
+            "artifact_id": new_id("stage_artifact"),
             "revision": stage["attempt"],
             "json_path": str(stage_json.resolve().relative_to(run_dir.resolve())).replace("\\", "/"),
             "markdown_path": str(stage_markdown.resolve().relative_to(run_dir.resolve())).replace("\\", "/"),
@@ -795,6 +1375,10 @@ def record_stage(run_dir: Path, stage_json: Path, stage_markdown: Path, validati
             "validation_sha256": sha256_file(validation_report),
             "sha256": artifact_hash,
             "stage_status": value["stage_status"],
+            "receipt_path": stage["runtime"]["receipt_path"],
+            "receipt_sha256": stage["runtime"]["receipt_sha256"],
+            "raw_response_path": receipt["raw_response_path"],
+            "raw_response_sha256": receipt["raw_response_sha256"],
         }
         stage["artifact"] = artifact
         completed_at = utc_now()
@@ -822,7 +1406,7 @@ def record_stage(run_dir: Path, stage_json: Path, stage_markdown: Path, validati
                 if not target.get("artifact") or target["status"] != "approved":
                     raise ValueError("Review rollback target must be an approved stage artifact.")
                 rollback_plan = {
-                    "schema_version": "1.1",
+                    "schema_version": CURRENT_CONTRACT_VERSION,
                     "run_id": state["run_id"],
                     "route_revision": state["route_revision"],
                     "rollback_revision": stage["attempt"],
@@ -854,12 +1438,6 @@ def record_stage(run_dir: Path, stage_json: Path, stage_markdown: Path, validati
                     "subject_sha256": rollback_artifact["sha256"],
                 }
             _set_status(state, "failed")
-        elif stage["role"] == "growth-report":
-            stage["status"] = "completed"
-            state["pending_approval"] = None
-            state["current_stage"] = None
-            state["pending_stage"] = None
-            _set_status(state, "finalizing")
         else:
             stage["status"] = "awaiting_user_confirmation"
             state["pending_approval"] = {
@@ -897,14 +1475,17 @@ def approve(
     action: str,
     user_text: str,
     idempotency_key: str,
+    source_surface: str = "codex",
 ) -> dict[str, Any]:
     with RunLock(run_dir):
-        state = load_state(run_dir)
+        state = load_state(run_dir, for_update=True)
         existing = next((item for item in read_jsonl(run_dir / APPROVALS_FILE) if item.get("idempotency_key") == idempotency_key), None)
         approval_already_appended = existing is not None
         if existing:
-            fingerprint = (approval_type, subject_id, subject_revision, subject_sha256, action, user_text)
-            prior = tuple(existing.get(key) for key in ("approval_type", "subject_id", "subject_revision", "subject_sha256", "action", "user_text"))
+            fingerprint = (approval_type, subject_id, subject_revision, subject_sha256, action, user_text, source_surface)
+            prior = tuple(existing.get(key) for key in ("approval_type", "subject_id", "subject_revision", "subject_sha256", "action", "user_text")) + (
+                (existing.get("provenance") or {}).get("source_surface"),
+            )
             if prior != fingerprint:
                 raise ValueError("Idempotency key is already bound to a different approval request.")
             committed_event = next(
@@ -927,7 +1508,7 @@ def approve(
             approval = existing
         else:
             approval = {
-                "schema_version": "1.1",
+                "schema_version": CURRENT_CONTRACT_VERSION,
                 "approval_id": new_id("approval"),
                 "approval_type": approval_type,
                 "run_id": state["run_id"],
@@ -940,6 +1521,15 @@ def approve(
                 "created_at": utc_now(),
                 "idempotency_key": idempotency_key,
                 "carried_from_approval_id": None,
+                "provenance": {
+                    "source_surface": source_surface,
+                    "source_message_id": None,
+                    "source_message_sha256": sha256_bytes(user_text.encode("utf-8")),
+                    "captured_at": utc_now(),
+                    "trust_level": "self_asserted",
+                    "capture_method": "root_cli",
+                    "host_receipt": None,
+                },
                 "query": None,
             }
             if approval_type == "query":
@@ -1055,6 +1645,191 @@ def approve(
         return approval
 
 
+def _find_execution_lease(state: dict[str, Any], lease_id: str) -> dict[str, Any]:
+    for lease in state.get("execution_leases", []):
+        if lease.get("lease_id") == lease_id:
+            return lease
+    raise ValueError(f"Unknown execution lease: {lease_id}")
+
+
+def _lease_expired(lease: dict[str, Any]) -> bool:
+    expires_at = datetime.fromisoformat(lease["expires_at"].replace("Z", "+00:00"))
+    return datetime.now(timezone.utc) >= expires_at
+
+
+def _execution_input_hashes(
+    run_dir: Path,
+    state: dict[str, Any],
+    kind: str,
+    input_artifact_ids: list[str],
+) -> dict[str, str]:
+    hashes: dict[str, str] = {}
+    if state.get("route_sha256"):
+        hashes["route"] = state["route_sha256"]
+    for artifact_id in input_artifact_ids:
+        artifact = artifact_by_id(state, artifact_id)
+        relative = artifact.get("path") or artifact.get("json_path")
+        path = resolve_within(run_dir, relative)
+        if not path.is_file() or sha256_file(path) != artifact.get("sha256"):
+            raise ValueError(f"Execution input artifact is missing or changed: {artifact_id}")
+        hashes[f"artifact:{artifact_id}"] = artifact["sha256"]
+    if kind == "query":
+        pending = state.get("pending_query") or {}
+        if not pending.get("approved") or not pending.get("approval_id"):
+            raise ValueError("A query execution lease requires a current approved query.")
+        hashes.update(
+            {
+                "query_subject": pending["subject_sha256"],
+                "query_sql": pending["query_sha256"],
+                "data_source": pending["data_source_fingerprint"],
+                "query_approval": sha256_bytes(pending["approval_id"].encode("utf-8")),
+            }
+        )
+    if not hashes:
+        raise ValueError("An execution lease must bind at least one deterministic input hash.")
+    return hashes
+
+
+def begin_execution_lease(
+    run_dir: Path,
+    kind: str,
+    subject_id: str,
+    subject_revision: int,
+    input_artifact_ids: list[str] | None = None,
+    input_files: list[Path] | None = None,
+    timeout_seconds: int = 3600,
+) -> dict[str, Any]:
+    if kind not in {"query", "charts", "lineage", "final_report"}:
+        raise ValueError(f"Unsupported execution lease kind: {kind}")
+    if timeout_seconds < 1 or timeout_seconds > 86400:
+        raise ValueError("Execution lease timeout_seconds must be between 1 and 86400.")
+    with RunLock(run_dir):
+        state = load_state(run_dir, for_update=True)
+        if state["status"] in {"completed", "stopped", "failed", "blocked"}:
+            raise ValueError(f"Cannot begin execution while run status is {state['status']}.")
+        active = [
+            item
+            for item in state.get("execution_leases", [])
+            if item["state"] in {"prepared", "executing", "publishing"}
+        ]
+        if active:
+            raise ValueError(f"Execution lease {active[0]['lease_id']} is already active.")
+        if kind == "query":
+            pending = state.get("pending_query") or {}
+            if (
+                pending.get("subject_id") != subject_id
+                or pending.get("subject_revision") != subject_revision
+                or not pending.get("approved")
+            ):
+                raise ValueError("Execution lease does not match the current approved query revision.")
+        input_hashes = _execution_input_hashes(run_dir, state, kind, input_artifact_ids or [])
+        for input_file in input_files or []:
+            path = resolve_within(run_dir, input_file)
+            if not path.is_file():
+                raise ValueError(f"Execution input file does not exist: {input_file}")
+            relative = str(path.relative_to(run_dir.resolve())).replace("\\", "/")
+            input_hashes[f"file:{relative}"] = sha256_file(path)
+        now = datetime.now(timezone.utc)
+        lease_id = new_id("lease")
+        staging_path = f"data/.executions/{lease_id}"
+        output_path = (
+            f"data/queries/{subject_id}/revision-{subject_revision}/result"
+            if kind == "query"
+            else None
+        )
+        lease = {
+            "schema_version": CURRENT_CONTRACT_VERSION,
+            "lease_id": lease_id,
+            "kind": kind,
+            "subject_id": subject_id,
+            "subject_revision": subject_revision,
+            "route_revision": state["route_revision"],
+            "input_hashes": input_hashes,
+            "state": "prepared",
+            "staging_path": staging_path,
+            "output_path": output_path,
+            "created_at": now.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+            "updated_at": now.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+            "expires_at": (now + timedelta(seconds=timeout_seconds)).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+            "abort_reason": None,
+            "published_artifact_ids": [],
+        }
+        validate_schema(lease, SCHEMA_DIR / "execution-lease.schema.json")
+        state["execution_leases"].append(lease)
+        _commit(run_dir, state, "execution_lease_prepared", {"lease": deepcopy(lease)})
+        staging = resolve_within(run_dir, staging_path)
+        try:
+            staging.mkdir(parents=True, exist_ok=False)
+        except OSError as exc:
+            lease["state"] = "aborted"
+            lease["abort_reason"] = f"staging_create_failed:{type(exc).__name__}"
+            lease["updated_at"] = utc_now()
+            _commit(run_dir, state, "execution_lease_aborted", {"lease_id": lease_id, "reason": lease["abort_reason"]})
+            raise
+        lease["state"] = "executing"
+        lease["updated_at"] = utc_now()
+        _commit(run_dir, state, "execution_lease_executing", {"lease_id": lease_id})
+        return deepcopy(lease)
+
+
+def _validate_execution_lease_locked(run_dir: Path, state: dict[str, Any], lease: dict[str, Any]) -> None:
+    if lease["state"] != "executing":
+        raise ValueError(f"Execution lease is not publishable from state {lease['state']}.")
+    if _lease_expired(lease):
+        raise ValueError("Execution lease expired before publication.")
+    allowed_statuses = {"running", "finalizing"}
+    if lease["kind"] == "charts":
+        allowed_statuses.add("awaiting_user_confirmation")
+    if state["status"] not in allowed_statuses:
+        raise ValueError(f"Run status {state['status']} invalidated the execution lease.")
+    if state["route_revision"] != lease["route_revision"]:
+        raise ValueError("Route revision changed while the execution lease was active.")
+    artifact_ids = [key.removeprefix("artifact:") for key in lease["input_hashes"] if key.startswith("artifact:")]
+    current_hashes = _execution_input_hashes(run_dir, state, lease["kind"], artifact_ids)
+    for key in lease["input_hashes"]:
+        if key.startswith("file:"):
+            relative = key.removeprefix("file:")
+            path = resolve_within(run_dir, relative)
+            if not path.is_file():
+                raise ValueError(f"Execution input file is missing: {relative}")
+            current_hashes[key] = sha256_file(path)
+    if current_hashes != lease["input_hashes"]:
+        raise ValueError("Execution inputs changed while the lease was active.")
+    if lease["kind"] == "query":
+        pending = state.get("pending_query") or {}
+        if pending.get("subject_id") != lease["subject_id"] or pending.get("subject_revision") != lease["subject_revision"]:
+            raise ValueError("The approved query changed while the execution lease was active.")
+
+
+def _abort_execution_lease_locked(lease: dict[str, Any], reason: str) -> None:
+    lease["state"] = "aborted"
+    lease["abort_reason"] = reason
+    lease["updated_at"] = utc_now()
+
+
+def _abort_active_execution_leases(state: dict[str, Any], reason: str) -> list[str]:
+    aborted: list[str] = []
+    for lease in state.get("execution_leases", []):
+        if lease["state"] in {"prepared", "executing", "publishing"}:
+            _abort_execution_lease_locked(lease, reason)
+            aborted.append(lease["lease_id"])
+    return aborted
+
+
+def abort_execution_lease(run_dir: Path, lease_id: str, reason: str) -> dict[str, Any]:
+    with RunLock(run_dir):
+        state = load_state(run_dir, for_update=True)
+        lease = _find_execution_lease(state, lease_id)
+        if lease["state"] in {"completed", "aborted"}:
+            return deepcopy(lease)
+        _abort_execution_lease_locked(lease, reason)
+        _commit(run_dir, state, "execution_lease_aborted", {"lease_id": lease_id, "reason": reason})
+        staging = resolve_within(run_dir, lease["staging_path"])
+        if staging.is_dir():
+            shutil.rmtree(staging)
+        return deepcopy(lease)
+
+
 def prepare_query(
     run_dir: Path,
     sql_file: Path,
@@ -1068,6 +1843,8 @@ def prepare_query(
 ) -> dict[str, Any]:
     from sql_guard import validate_and_rewrite
 
+    if not QUERY_ID_RE.fullmatch(query_id):
+        raise ValueError("query_id must contain 2-128 letters, digits, dots, underscores, or hyphens.")
     raw_sql = sql_file.read_text(encoding="utf-8")
     if not re.fullmatch(r"[A-Fa-f0-9]{64}", data_source_fingerprint):
         raise ValueError("data_source_fingerprint must be a 64-character SHA-256 value.")
@@ -1075,7 +1852,7 @@ def prepare_query(
     if not result.ok:
         raise ValueError("Query failed SQL safety validation:\n- " + "\n- ".join(result.errors))
     with RunLock(run_dir):
-        state = load_state(run_dir)
+        state = load_state(run_dir, for_update=True)
         if state["status"] != "running":
             raise ValueError(f"Cannot prepare query while run status is {state['status']}.")
         if state.get("current_stage") or state.get("pending_query"):
@@ -1089,14 +1866,19 @@ def prepare_query(
             raise ValueError(f"Approved SQL artifact has no executable query named {query_id!r}.")
         if proposal["sql"].strip() != raw_sql.strip():
             raise ValueError("SQL input does not exactly match the approved SQL-stage proposal.")
-        data_dir = run_dir / "data"
-        final_sql_path = data_dir / "query.sql"
+        previous_revisions = [
+            int(item.get("metadata", {}).get("query_revision", 0))
+            for item in state["artifacts"]
+            if item.get("kind") == "query_request" and item.get("metadata", {}).get("query_id") == query_id
+        ]
+        revision = max(previous_revisions, default=0) + 1
+        query_dir = run_dir / "data" / "queries" / query_id / f"revision-{revision}"
+        if query_dir.exists():
+            raise ValueError("Immutable query revision directory already exists.")
+        query_dir.mkdir(parents=True)
+        final_sql_path = query_dir / "query.sql"
         atomic_write_text(final_sql_path, result.sql)
         sql_hash = sha256_file(final_sql_path)
-        revision = 1
-        old_request = data_dir / "query-request.json"
-        if old_request.exists():
-            revision = int(load_json(old_request).get("revision", 0)) + 1
         fingerprint = {
             "query_id": query_id,
             "revision": revision,
@@ -1109,15 +1891,35 @@ def prepare_query(
             "max_result_bytes": max_result_bytes,
         }
         request = {
-            "schema_version": "1.1",
+            "schema_version": CURRENT_CONTRACT_VERSION,
             **fingerprint,
-            "sql_path": "data/query.sql",
+            "sql_path": str(final_sql_path.relative_to(run_dir.resolve())).replace("\\", "/"),
             "subject_sha256": sha256_json(fingerprint),
             "warnings": result.warnings,
             "created_at": utc_now(),
         }
         validate_schema(request, SCHEMA_DIR / "query-request.schema.json")
-        atomic_write_json(old_request, request)
+        request_path = query_dir / "query-request.json"
+        atomic_write_json(request_path, request)
+        request_relative = str(request_path.relative_to(run_dir.resolve())).replace("\\", "/")
+        sql_relative = str(final_sql_path.relative_to(run_dir.resolve())).replace("\\", "/")
+        query_artifacts = [
+            {
+                "artifact_id": new_id("query_sql"),
+                "kind": "query_sql",
+                "path": sql_relative,
+                "sha256": sql_hash,
+                "metadata": {"query_id": query_id, "query_revision": revision},
+            },
+            {
+                "artifact_id": new_id("query_request"),
+                "kind": "query_request",
+                "path": request_relative,
+                "sha256": sha256_file(request_path),
+                "metadata": {"query_id": query_id, "query_revision": revision},
+            },
+        ]
+        state["artifacts"].extend(query_artifacts)
         state["pending_query"] = {
             "approval_type": "query",
             "subject_id": query_id,
@@ -1132,6 +1934,9 @@ def prepare_query(
             "max_result_bytes": max_result_bytes,
             "approved": False,
             "approval_id": None,
+            "request_path": request_relative,
+            "request_sha256": query_artifacts[1]["sha256"],
+            "sql_path": sql_relative,
         }
         state["data_source"] = {
             "data_source_id": data_source_id,
@@ -1139,73 +1944,146 @@ def prepare_query(
             "dialect": dialect,
         }
         _set_status(state, "awaiting_query_confirmation")
-        _commit(run_dir, state, "query_prepared", {"query_request": request})
+        _commit(run_dir, state, "query_prepared", {"query_request": request, "artifacts": query_artifacts})
         return request
 
 
-def record_query_result(run_dir: Path, manifest_path: Path, result_path: Path, profile_path: Path) -> dict[str, Any]:
+def record_query_result(
+    run_dir: Path,
+    manifest_path: Path,
+    result_path: Path,
+    profile_path: Path,
+    lease_id: str | None = None,
+) -> dict[str, Any]:
+    if not lease_id:
+        raise ValueError("Query publication requires the execution lease created before database access.")
     with RunLock(run_dir):
-        state = load_state(run_dir)
-        pending = state.get("pending_query")
-        if not pending or not pending.get("approved"):
-            raise ValueError("The current query has not been approved.")
-        manifest_path = resolve_within(run_dir, manifest_path)
-        result_path = resolve_within(run_dir, result_path)
-        profile_path = resolve_within(run_dir, profile_path)
-        manifest = load_json(manifest_path)
-        validate_schema(manifest, SCHEMA_DIR / "query-manifest.schema.json")
-        expected_manifest = {
-            "query_id": pending.get("subject_id"),
-            "sql_sha256": pending.get("query_sha256"),
-            "data_source_id": pending.get("data_source_id"),
-            "data_source_fingerprint": pending.get("data_source_fingerprint"),
-            "dialect": pending.get("dialect"),
-            "timeout_seconds": pending.get("timeout_seconds"),
-            "max_rows": pending.get("max_rows"),
-            "max_result_bytes": pending.get("max_result_bytes"),
-        }
-        if any(manifest.get(key) != value for key, value in expected_manifest.items()):
-            raise ValueError("Query manifest does not match the approved request.")
-        expected_result_path = str(result_path.relative_to(run_dir.resolve())).replace("\\", "/")
-        expected_profile_path = str(profile_path.relative_to(run_dir.resolve())).replace("\\", "/")
-        if manifest["result_path"] != expected_result_path or manifest["profile_path"] != expected_profile_path:
-            raise ValueError("Query manifest paths do not match the recorded files.")
-        if manifest["result_bytes"] != result_path.stat().st_size:
-            raise ValueError("Query result byte count does not match the manifest.")
-        if sha256_file(result_path) != manifest["result_sha256"] or sha256_file(profile_path) != manifest["profile_sha256"]:
-            raise ValueError("Query result or profile hash does not match the manifest.")
-        artifacts = []
-        for kind, path in (("query_manifest", manifest_path), ("query_result", result_path), ("result_profile", profile_path)):
-            resolved = resolve_within(run_dir, path)
-            if not resolved.is_file():
-                raise ValueError(f"Missing query artifact: {resolved}")
-            artifact = {
-                "artifact_id": new_id(kind),
-                "kind": kind,
-                "path": str(resolved.relative_to(run_dir.resolve())).replace("\\", "/"),
-                "sha256": sha256_file(resolved),
+        state = load_state(run_dir, for_update=True)
+        lease = _find_execution_lease(state, lease_id)
+
+        def abort(reason: str) -> None:
+            _abort_execution_lease_locked(lease, reason)
+            _commit(run_dir, state, "execution_lease_aborted", {"lease_id": lease_id, "reason": reason})
+
+        try:
+            _validate_execution_lease_locked(run_dir, state, lease)
+            if lease["kind"] != "query":
+                raise ValueError("Only a query execution lease can publish query results.")
+            pending = state.get("pending_query")
+            if not pending or not pending.get("approved"):
+                raise ValueError("The current query has not been approved.")
+            staging = resolve_within(run_dir, lease["staging_path"])
+            manifest_path = resolve_within(run_dir, manifest_path)
+            result_path = resolve_within(run_dir, result_path)
+            profile_path = resolve_within(run_dir, profile_path)
+            for path in (manifest_path, result_path, profile_path):
+                if path.parent != staging:
+                    raise ValueError("Query output files must be written directly inside the leased staging directory.")
+                if not path.is_file():
+                    raise ValueError(f"Missing staged query artifact: {path.name}")
+            manifest = load_json(manifest_path)
+            validate_schema(manifest, SCHEMA_DIR / "query-manifest.schema.json")
+            profile = load_json(profile_path)
+            validate_schema(profile, SCHEMA_DIR / "result-profile.schema.json")
+            expected_manifest = {
+                "query_id": pending.get("subject_id"),
+                "sql_sha256": pending.get("query_sha256"),
+                "data_source_id": pending.get("data_source_id"),
+                "data_source_fingerprint": pending.get("data_source_fingerprint"),
+                "dialect": pending.get("dialect"),
+                "timeout_seconds": pending.get("timeout_seconds"),
+                "max_rows": pending.get("max_rows"),
+                "max_result_bytes": pending.get("max_result_bytes"),
             }
-            for old in state["artifacts"]:
-                if old.get("kind") == kind and old.get("path") == artifact["path"] and not old.get("superseded_by"):
-                    old["superseded_by"] = artifact["artifact_id"]
-            state["artifacts"].append(artifact)
-            artifacts.append(artifact)
+            if any(manifest.get(key) != value for key, value in expected_manifest.items()):
+                raise ValueError("Query manifest does not match the approved request.")
+            output_relative = lease.get("output_path")
+            if not output_relative:
+                raise ValueError("Query execution lease has no immutable output path.")
+            expected_result_path = f"{output_relative}/result.csv"
+            expected_profile_path = f"{output_relative}/result-profile.json"
+            if manifest["result_path"] != expected_result_path or manifest["profile_path"] != expected_profile_path:
+                raise ValueError("Query manifest paths do not match the leased publication paths.")
+            if manifest["result_bytes"] != result_path.stat().st_size:
+                raise ValueError("Query result byte count does not match the manifest.")
+            if sha256_file(result_path) != manifest["result_sha256"] or sha256_file(profile_path) != manifest["profile_sha256"]:
+                raise ValueError("Query result or profile hash does not match the manifest.")
+        except (OSError, ValueError) as exc:
+            abort(f"publication_validation_failed:{type(exc).__name__}")
+            raise
+
+        final_dir = resolve_within(run_dir, lease["output_path"])
+        if final_dir.exists():
+            abort("immutable_output_already_exists")
+            raise ValueError("Immutable query output directory already exists.")
+        artifacts = []
+        final_paths = {
+            "query_manifest": final_dir / "query-manifest.json",
+            "query_result": final_dir / "result.csv",
+            "result_profile": final_dir / "result-profile.json",
+        }
+        for kind, staged in (
+            ("query_manifest", manifest_path),
+            ("query_result", result_path),
+            ("result_profile", profile_path),
+        ):
+            artifacts.append(
+                {
+                    "artifact_id": new_id(kind),
+                    "kind": kind,
+                    "path": str(final_paths[kind].relative_to(run_dir.resolve())).replace("\\", "/"),
+                    "sha256": sha256_file(staged),
+                    "metadata": {
+                        "query_id": lease["subject_id"],
+                        "query_revision": lease["subject_revision"],
+                        "lease_id": lease_id,
+                    },
+                }
+            )
+        lease["state"] = "publishing"
+        lease["updated_at"] = utc_now()
+        _commit(
+            run_dir,
+            state,
+            "execution_lease_publishing",
+            {"lease_id": lease_id, "output_path": lease["output_path"], "artifacts": deepcopy(artifacts)},
+        )
+        final_dir.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.replace(resolve_within(run_dir, lease["staging_path"]), final_dir)
+        except OSError:
+            _abort_execution_lease_locked(lease, "atomic_publish_failed")
+            _commit(run_dir, state, "execution_lease_aborted", {"lease_id": lease_id, "reason": lease["abort_reason"]})
+            raise
+        state["artifacts"].extend(artifacts)
         state["pending_query"] = None
+        lease["state"] = "completed"
+        lease["updated_at"] = utc_now()
+        lease["published_artifact_ids"] = [item["artifact_id"] for item in artifacts]
         _set_status(state, "running")
-        _commit(run_dir, state, "query_completed", {"query_id": manifest["query_id"], "artifacts": artifacts})
+        _commit(
+            run_dir,
+            state,
+            "query_completed",
+            {"query_id": manifest["query_id"], "lease_id": lease_id, "artifacts": artifacts},
+        )
         return state
 
 
 def register_artifacts(run_dir: Path, artifacts: list[dict[str, Any]], event_type: str = "artifacts_registered") -> list[dict[str, Any]]:
     with RunLock(run_dir):
-        state = load_state(run_dir)
+        state = load_state(run_dir, for_update=True)
         if state["status"] == "completed":
             raise ValueError("Completed run artifacts are immutable.")
         records: list[dict[str, Any]] = []
         existing = {
             (item.get("kind"), item.get("path"), item.get("sha256"))
             for item in state["artifacts"]
-            if not item.get("superseded_by")
+        }
+        registered_paths = {
+            item.get("path"): item
+            for item in state["artifacts"]
+            if item.get("path")
         }
         for item in artifacts:
             kind = str(item.get("kind", "")).strip()
@@ -1219,6 +2097,11 @@ def register_artifacts(run_dir: Path, artifacts: list[dict[str, Any]], event_typ
             key = (kind, relative, digest)
             if key in existing:
                 continue
+            prior_at_path = registered_paths.get(relative)
+            if prior_at_path is not None and prior_at_path.get("sha256") != digest:
+                raise ValueError(
+                    f"Registered artifact paths are immutable; publish a new versioned path instead of overwriting {relative}."
+                )
             record = {
                 "artifact_id": new_id(kind),
                 "kind": kind,
@@ -1227,20 +2110,92 @@ def register_artifacts(run_dir: Path, artifacts: list[dict[str, Any]], event_typ
             }
             if item.get("metadata") is not None:
                 record["metadata"] = item["metadata"]
-            for old in state["artifacts"]:
-                if old.get("kind") == kind and old.get("path") == relative and not old.get("superseded_by"):
-                    old["superseded_by"] = record["artifact_id"]
             state["artifacts"].append(record)
             records.append(record)
             existing.add(key)
+            registered_paths[relative] = record
         if records:
             _commit(run_dir, state, event_type, {"artifacts": records})
         return records
 
 
+def publish_execution_artifacts(
+    run_dir: Path,
+    lease_id: str,
+    artifacts: list[dict[str, Any]],
+    *,
+    invalidate_kinds: set[str],
+    event_type: str,
+) -> list[dict[str, Any]]:
+    with RunLock(run_dir):
+        state = load_state(run_dir, for_update=True)
+        lease = _find_execution_lease(state, lease_id)
+        try:
+            _validate_execution_lease_locked(run_dir, state, lease)
+        except ValueError:
+            _abort_execution_lease_locked(lease, "publication_inputs_changed")
+            _commit(run_dir, state, "execution_lease_aborted", {"lease_id": lease_id, "reason": lease["abort_reason"]})
+            raise
+        records: list[dict[str, Any]] = []
+        registered_paths = {
+            item.get("path"): item
+            for item in state["artifacts"]
+            if item.get("path")
+        }
+        resolved_paths: list[Path] = []
+        for item in artifacts:
+            kind = str(item.get("kind", "")).strip()
+            if not ARTIFACT_KIND_RE.fullmatch(kind):
+                raise ValueError("Published artifact kind is invalid.")
+            path = resolve_within(run_dir, item.get("path", ""))
+            if not path.is_file():
+                raise ValueError(f"Published artifact does not exist: {path}")
+            relative = str(path.relative_to(run_dir.resolve())).replace("\\", "/")
+            digest = sha256_file(path)
+            prior_at_path = registered_paths.get(relative)
+            if prior_at_path is not None and prior_at_path.get("sha256") != digest:
+                raise ValueError(f"Published artifact path was previously registered with different content: {relative}")
+            record = {
+                "artifact_id": new_id(kind),
+                "kind": kind,
+                "path": relative,
+                "sha256": digest,
+                "metadata": {**(item.get("metadata") or {}), "lease_id": lease_id},
+            }
+            records.append(record)
+            resolved_paths.append(path)
+        if not records:
+            raise ValueError("Execution publication requires at least one artifact.")
+        common_parent = Path(os.path.commonpath([str(path.parent) for path in resolved_paths]))
+        lease["output_path"] = str(common_parent.relative_to(run_dir.resolve())).replace("\\", "/")
+        lease["state"] = "publishing"
+        lease["updated_at"] = utc_now()
+        _commit(
+            run_dir,
+            state,
+            "execution_lease_publishing",
+            {"lease_id": lease_id, "output_path": lease["output_path"], "artifacts": deepcopy(records)},
+        )
+        invalidation_id = new_id("invalidation")
+        for old in state["artifacts"]:
+            if old.get("kind") in invalidate_kinds and not old.get("superseded_by"):
+                old["superseded_by"] = invalidation_id
+        state["artifacts"].extend(records)
+        lease["state"] = "completed"
+        lease["updated_at"] = utc_now()
+        lease["published_artifact_ids"] = [item["artifact_id"] for item in records]
+        _commit(
+            run_dir,
+            state,
+            event_type,
+            {"lease_id": lease_id, "artifacts": records, "invalidated_by": invalidation_id},
+        )
+        return records
+
+
 def invalidate_artifacts(run_dir: Path, kinds: set[str], reason: str) -> list[str]:
     with RunLock(run_dir):
-        state = load_state(run_dir)
+        state = load_state(run_dir, for_update=True)
         if state["status"] == "completed":
             raise ValueError("Completed run artifacts are immutable.")
         invalidation_id = new_id("invalidation")
@@ -1260,7 +2215,7 @@ def invalidate_artifacts(run_dir: Path, kinds: set[str], reason: str) -> list[st
 
 
 def ingest_artifact(run_dir: Path, source: Path, kind: str, name: str | None = None) -> dict[str, Any]:
-    if load_state(run_dir)["status"] == "completed":
+    if load_state(run_dir, for_update=True)["status"] == "completed":
         raise ValueError("Completed run artifacts are immutable.")
     if not ARTIFACT_KIND_RE.fullmatch(kind):
         raise ValueError("Ingested artifact kind must use 2-64 lowercase letters, digits, underscores, or hyphens.")
@@ -1278,7 +2233,7 @@ def ingest_artifact(run_dir: Path, source: Path, kind: str, name: str | None = N
     records = register_artifacts(run_dir, [{"kind": kind, "path": destination}], event_type="input_ingested")
     if records:
         return records[0]
-    state = load_state(run_dir)
+    state = load_state(run_dir, for_update=True)
     digest = sha256_file(destination)
     return next(item for item in state["artifacts"] if item.get("kind") == kind and item.get("sha256") == digest and item.get("path") == str(destination.relative_to(run_dir.resolve())).replace("\\", "/"))
 
@@ -1331,6 +2286,7 @@ def _invalidate_derived_artifacts(state: dict[str, Any], affected: set[str], rea
 
 
 def _revise_state(state: dict[str, Any], stage_id: str) -> tuple[dict[str, Any], set[str], list[str]]:
+    _abort_active_execution_leases(state, "stage_revision")
     target = _find_stage(state, stage_id)
     affected = _descendants(state, stage_id)
     for stage in state["stages"]:
@@ -1350,7 +2306,7 @@ def _revise_state(state: dict[str, Any], stage_id: str) -> tuple[dict[str, Any],
 
 def revise(run_dir: Path, stage_id: str, request_text: str) -> dict[str, Any]:
     with RunLock(run_dir):
-        state = load_state(run_dir)
+        state = load_state(run_dir, for_update=True)
         if state["status"] not in {"awaiting_user_confirmation", "awaiting_query_confirmation", "running", "blocked", "failed"}:
             raise ValueError(f"Cannot revise a stage while run status is {state['status']}.")
         if state["status"] == "running" and (
@@ -1381,7 +2337,7 @@ def request_metric_edit(run_dir: Path, edit_file: Path) -> dict[str, Any]:
         raise ValueError("Metric edit must contain a JSON object.")
     validate_schema(edit, SCHEMA_DIR / "metric-edit.schema.json")
     with RunLock(run_dir):
-        state = load_state(run_dir)
+        state = load_state(run_dir, for_update=True)
         if state["status"] != "awaiting_user_confirmation":
             raise ValueError("Metric edits are accepted only while a Metrics artifact awaits confirmation.")
         stage = _find_stage(state, edit["stage_id"])
@@ -1465,43 +2421,59 @@ def request_metric_edit(run_dir: Path, edit_file: Path) -> dict[str, Any]:
 
 def stop(run_dir: Path, reason: str) -> dict[str, Any]:
     with RunLock(run_dir):
-        state = load_state(run_dir)
+        state = load_state(run_dir, for_update=True)
         if state["status"] == "completed":
             raise ValueError("Completed run cannot be stopped.")
         state["resume_status"] = state["status"]
+        aborted_leases = _abort_active_execution_leases(state, "run_stopped")
         _set_status(state, "stopped")
-        _commit(run_dir, state, "run_stopped", {"reason": reason})
+        _commit(run_dir, state, "run_stopped", {"reason": reason, "aborted_leases": aborted_leases})
         return state
 
 
-def _audit_event_chain(events: list[dict[str, Any]]) -> list[str]:
+def _replay_event_chain(events: list[dict[str, Any]]) -> tuple[list[str], dict[str, Any] | None]:
     errors: list[str] = []
     previous_hash: str | None = None
+    previous_event_hash: str | None = None
+    previous_snapshot: dict[str, Any] | None = None
     for index, event in enumerate(events, start=1):
         if event.get("event_id") != index:
             errors.append("events.jsonl event_id sequence is not contiguous.")
             break
         if event.get("state_revision") != index:
             errors.append(f"Event {index} has an unexpected state_revision.")
-        snapshot = event.get("state_after")
-        if not isinstance(snapshot, dict):
-            errors.append(f"Event {index} is missing its recoverable state snapshot.")
-            continue
+        snapshot: dict[str, Any] | None = None
         try:
+            snapshot = _event_state_after(event, previous_snapshot)
             validate_schema(snapshot, SCHEMA_DIR / "run-state.schema.json")
         except ValueError as exc:
-            errors.append(f"Event {index} state snapshot is invalid: {exc}")
-            continue
-        snapshot_hash = sha256_json(snapshot)
-        if event.get("state_sha256") != snapshot_hash:
-            errors.append(f"Event {index} state snapshot hash does not match.")
-        if event.get("previous_state_sha256") != previous_hash:
-            errors.append(f"Event {index} does not continue the state hash chain.")
-        if snapshot.get("revision") != index or snapshot.get("last_event_id") != index:
-            errors.append(f"Event {index} snapshot revision counters do not match.")
-        if event.get("status") != snapshot.get("status"):
-            errors.append(f"Event {index} status does not match its state snapshot.")
-        previous_hash = snapshot_hash
+            errors.append(f"Event {index} state reconstruction is invalid: {exc}")
+        if snapshot is not None:
+            snapshot_hash = sha256_json(snapshot)
+            if event.get("state_sha256") != snapshot_hash:
+                errors.append(f"Event {index} reconstructed state hash does not match.")
+            if event.get("previous_state_sha256") != previous_hash:
+                errors.append(f"Event {index} does not continue the state hash chain.")
+            if snapshot.get("revision") != index or snapshot.get("last_event_id") != index:
+                errors.append(f"Event {index} reconstructed state revision counters do not match.")
+            if event.get("status") != snapshot.get("status"):
+                errors.append(f"Event {index} status does not match its reconstructed state.")
+        if event.get("schema_version") == CURRENT_CONTRACT_VERSION:
+            if event.get("previous_event_sha256") != previous_event_hash:
+                errors.append(f"Event {index} does not continue the event hash chain.")
+            if event.get("event_sha256") != _event_content_sha256(event):
+                errors.append(f"Event {index} content hash does not match.")
+        elif event.get("schema_version") not in LEGACY_CONTRACT_VERSIONS:
+            errors.append(f"Event {index} uses an unsupported contract version.")
+        if snapshot is not None:
+            previous_hash = sha256_json(snapshot)
+            previous_snapshot = snapshot
+        previous_event_hash = _event_chain_sha256(event)
+    return errors, previous_snapshot
+
+
+def _audit_event_chain(events: list[dict[str, Any]]) -> list[str]:
+    errors, _ = _replay_event_chain(events)
     return errors
 
 
@@ -1542,9 +2514,20 @@ def audit_run(run_dir: Path) -> list[str]:
             attempt_dir = run_dir / "stages" / stage["stage_id"] / f"attempt-{attempt}"
             if not attempt_dir.is_dir():
                 errors.append(f"Stage {stage['stage_id']} is missing attempt directory {attempt}.")
+        if stage.get("artifact") and stage["status"] in {"approved", "completed", "awaiting_user_confirmation"}:
+            try:
+                value = _verified_stage_output(run_dir, stage)
+                context_errors = _validate_stage_context(run_dir, state, stage, value)
+                errors.extend(f"Stage {stage['stage_id']} audit: {error}" for error in context_errors)
+                if stage["artifact"].get("receipt_path"):
+                    stage_path = resolve_within(run_dir, stage["artifact"]["json_path"])
+                    _verify_agent_receipt(run_dir, state, stage, stage_path, value)
+            except (OSError, ValueError) as exc:
+                errors.append(f"Stage {stage['stage_id']} audit failed: {exc}")
+    artifact_ids = [item.get("artifact_id") for item in state["artifacts"] if item.get("artifact_id")]
+    if len(artifact_ids) != len(set(artifact_ids)):
+        errors.append("Run contains duplicate artifact_id values.")
     for artifact in state["artifacts"]:
-        if artifact.get("superseded_by"):
-            continue
         try:
             relative = artifact.get("json_path") or artifact.get("path")
             if not relative:
@@ -1554,7 +2537,12 @@ def audit_run(run_dir: Path) -> list[str]:
                 errors.append(f"Missing artifact: {relative}")
             elif sha256_file(path) != artifact["sha256"]:
                 errors.append(f"Artifact hash mismatch: {relative}")
-            for path_key, hash_key in (("markdown_path", "markdown_sha256"), ("validation_path", "validation_sha256")):
+            for path_key, hash_key in (
+                ("markdown_path", "markdown_sha256"),
+                ("validation_path", "validation_sha256"),
+                ("receipt_path", "receipt_sha256"),
+                ("raw_response_path", "raw_response_sha256"),
+            ):
                 if path_key in artifact:
                     companion = resolve_within(run_dir, artifact[path_key])
                     if not companion.is_file():
@@ -1563,6 +2551,38 @@ def audit_run(run_dir: Path) -> list[str]:
                         errors.append(f"Artifact hash mismatch: {artifact[path_key]}")
         except (KeyError, ValueError) as exc:
             errors.append(str(exc))
+    lease_ids: set[str] = set()
+    artifacts_by_id = {item.get("artifact_id"): item for item in state["artifacts"]}
+    for lease in state.get("execution_leases", []):
+        try:
+            validate_schema(lease, SCHEMA_DIR / "execution-lease.schema.json")
+        except ValueError as exc:
+            errors.append(str(exc))
+        lease_id = lease.get("lease_id")
+        if lease_id in lease_ids:
+            errors.append(f"Duplicate execution lease ID: {lease_id}")
+        lease_ids.add(lease_id)
+        if lease.get("state") == "completed":
+            if not lease.get("published_artifact_ids"):
+                errors.append(f"Completed execution lease {lease_id} has no published artifacts.")
+            for artifact_id in lease.get("published_artifact_ids", []):
+                artifact = artifacts_by_id.get(artifact_id)
+                if artifact is None:
+                    errors.append(f"Execution lease {lease_id} references missing artifact {artifact_id}.")
+                elif artifact.get("metadata", {}).get("lease_id") != lease_id:
+                    errors.append(f"Execution lease {lease_id} artifact {artifact_id} is not bound back to the lease.")
+        if lease.get("state") in {"prepared", "executing"}:
+            try:
+                staging = resolve_within(run_dir, lease["staging_path"])
+                if not staging.is_dir():
+                    errors.append(f"Active execution lease {lease_id} is missing its staging directory.")
+            except (KeyError, ValueError) as exc:
+                errors.append(str(exc))
+        if lease.get("state") == "publishing":
+            staging = resolve_within(run_dir, lease["staging_path"])
+            output = resolve_within(run_dir, lease["output_path"]) if lease.get("output_path") else None
+            if not staging.is_dir() and (output is None or not output.is_dir()):
+                errors.append(f"Publishing execution lease {lease_id} has neither staged nor published files.")
     try:
         approvals = read_jsonl(run_dir / APPROVALS_FILE)
     except ValueError as exc:
@@ -1591,6 +2611,13 @@ def audit_run(run_dir: Path) -> list[str]:
             validate_schema(approval, SCHEMA_DIR / "approval.schema.json")
         except ValueError as exc:
             errors.append(str(exc))
+        if approval.get("schema_version") == CURRENT_CONTRACT_VERSION:
+            provenance = approval.get("provenance") or {}
+            expected_message_hash = sha256_bytes(str(approval.get("user_text", "")).encode("utf-8"))
+            if provenance.get("source_message_sha256") != expected_message_hash:
+                errors.append(f"Approval {approval.get('approval_id')} user-text provenance hash does not match.")
+            if provenance.get("trust_level") == "host_signed" and not provenance.get("host_receipt"):
+                errors.append(f"Approval {approval.get('approval_id')} claims host_signed without a host receipt.")
         key = approval.get("idempotency_key")
         if key in idempotency_keys:
             errors.append(f"Duplicate approval idempotency key: {key}")
@@ -1627,6 +2654,10 @@ def audit_run(run_dir: Path) -> list[str]:
         active_artifacts = [item for item in state["artifacts"] if not item.get("superseded_by")]
         active_kinds = {item.get("kind") for item in active_artifacts}
         summaries = [item for item in active_artifacts if item.get("kind") == "run_summary"]
+        final_reports = [item for item in active_artifacts if item.get("kind") == "final_report"]
+        final_manifests = [item for item in active_artifacts if item.get("kind") == "final_report_manifest"]
+        if len(final_reports) != 1 or len(final_manifests) != 1:
+            errors.append("Completed run is missing its unique final report or manifest artifact.")
         if len(summaries) != 1:
             errors.append("Completed run is missing an active run_summary artifact.")
         else:
@@ -1636,6 +2667,8 @@ def audit_run(run_dir: Path) -> list[str]:
                     summary.get("run_id") != state["run_id"]
                     or summary.get("status") != "completed"
                     or summary.get("state_revision") != state["revision"]
+                    or len(final_reports) != 1
+                    or summary.get("final_report_artifact_id") != final_reports[0].get("artifact_id")
                 ):
                     errors.append("Completed run summary does not match the final state identity or revision.")
             except (AttributeError, OSError, ValueError, json.JSONDecodeError) as exc:
@@ -1651,9 +2684,11 @@ def recover_state(run_dir: Path) -> dict[str, Any]:
         events = read_jsonl(run_dir / EVENTS_FILE, tolerate_truncated_tail=True)
         if not events:
             raise ValueError("No committed event is available for recovery.")
-        errors = _audit_event_chain(events)
+        errors, recovered = _replay_event_chain(events)
         if errors:
             raise ValueError("Event log cannot be recovered:\n- " + "\n- ".join(errors))
+        if recovered is None:
+            raise ValueError("Event log has no recoverable state.")
         recovered_approvals: list[dict[str, Any]] = []
         for event in events:
             if event.get("event_type") != "approval_recorded":
@@ -1666,16 +2701,94 @@ def recover_state(run_dir: Path) -> dict[str, Any]:
         atomic_write_jsonl(run_dir / EVENTS_FILE, events)
         if recovered_approvals or (run_dir / APPROVALS_FILE).exists():
             atomic_write_jsonl(run_dir / APPROVALS_FILE, recovered_approvals)
-        recovered = deepcopy(events[-1]["state_after"])
+        recovered = deepcopy(recovered)
         atomic_write_json(_state_path(run_dir), recovered)
         errors = audit_run(run_dir)
         if errors:
             raise ValueError("State snapshot was restored, but the run still has consistency errors:\n- " + "\n- ".join(errors))
+        _commit(
+            run_dir,
+            recovered,
+            "state_recovered",
+            {
+                "source_event_id": events[-1]["event_id"],
+                "source_state_sha256": events[-1]["state_sha256"],
+                "rebuilt_approval_count": len(recovered_approvals),
+            },
+        )
         return recovered
 
 
+def recover_execution_leases(run_dir: Path) -> dict[str, Any]:
+    with RunLock(run_dir):
+        state = load_state(run_dir, for_update=True)
+        events = read_jsonl(run_dir / EVENTS_FILE)
+        recovered: list[str] = []
+        aborted: list[str] = []
+        cleanup: list[Path] = []
+        existing_ids = {item.get("artifact_id") for item in state["artifacts"]}
+        for lease in state.get("execution_leases", []):
+            if lease["state"] in {"completed", "aborted"}:
+                continue
+            staging = resolve_within(run_dir, lease["staging_path"])
+            output = resolve_within(run_dir, lease["output_path"]) if lease.get("output_path") else None
+            if lease["state"] != "publishing" or output is None or not output.is_dir():
+                _abort_execution_lease_locked(lease, "recovered_interrupted_execution")
+                aborted.append(lease["lease_id"])
+                if staging.is_dir():
+                    cleanup.append(staging)
+                continue
+            publishing_event = next(
+                (
+                    event
+                    for event in reversed(events)
+                    if event.get("event_type") == "execution_lease_publishing"
+                    and event.get("payload", {}).get("lease_id") == lease["lease_id"]
+                ),
+                None,
+            )
+            descriptors = publishing_event.get("payload", {}).get("artifacts", []) if publishing_event else []
+            valid_descriptors = bool(descriptors)
+            for descriptor in descriptors:
+                try:
+                    path = resolve_within(run_dir, descriptor["path"])
+                    if not path.is_file() or sha256_file(path) != descriptor["sha256"]:
+                        valid_descriptors = False
+                        break
+                except (KeyError, ValueError):
+                    valid_descriptors = False
+                    break
+            if not valid_descriptors:
+                _abort_execution_lease_locked(lease, "recovered_publication_is_incomplete")
+                aborted.append(lease["lease_id"])
+                continue
+            for descriptor in descriptors:
+                if descriptor["artifact_id"] not in existing_ids:
+                    state["artifacts"].append(descriptor)
+                    existing_ids.add(descriptor["artifact_id"])
+            lease["state"] = "completed"
+            lease["updated_at"] = utc_now()
+            lease["published_artifact_ids"] = [item["artifact_id"] for item in descriptors]
+            if lease["kind"] == "query":
+                pending = state.get("pending_query") or {}
+                if pending.get("subject_id") == lease["subject_id"] and pending.get("subject_revision") == lease["subject_revision"]:
+                    state["pending_query"] = None
+                _set_status(state, "running")
+            recovered.append(lease["lease_id"])
+        if recovered or aborted:
+            _commit(
+                run_dir,
+                state,
+                "execution_leases_recovered",
+                {"completed": recovered, "aborted": aborted},
+            )
+        for staging in cleanup:
+            shutil.rmtree(staging, ignore_errors=True)
+        return state
+
+
 def build_run_summary(run_dir: Path, output: Path | None = None) -> dict[str, Any]:
-    state = load_state(run_dir)
+    state = load_state(run_dir, for_update=output is not None)
     if output and state["status"] == "completed":
         raise ValueError("Completed run artifacts are immutable.")
     approvals = read_jsonl(run_dir / APPROVALS_FILE)
@@ -1722,7 +2835,7 @@ def build_run_summary(run_dir: Path, output: Path | None = None) -> dict[str, An
         "completed": "No workflow action is required.",
     }.get(state["status"], f"Continue with stage {state.get('pending_stage') or state.get('current_stage')}.")
     summary = {
-        "schema_version": "1.1",
+        "schema_version": CURRENT_CONTRACT_VERSION,
         "generated_at": utc_now(),
         "run_id": state["run_id"],
         "state_revision": state["revision"],
@@ -1764,9 +2877,168 @@ def build_run_summary(run_dir: Path, output: Path | None = None) -> dict[str, An
     return summary
 
 
+def publish_final_report(run_dir: Path) -> dict[str, Any]:
+    state = load_state(run_dir, for_update=True)
+    if state["status"] != "finalizing":
+        raise ValueError(f"Final report cannot be published from status {state['status']}.")
+    reports = [
+        stage
+        for stage in state["stages"]
+        if stage["role"] == "growth-report" and stage["status"] == "approved" and stage.get("artifact")
+    ]
+    if len(reports) != 1:
+        raise ValueError("Final report publication requires exactly one user-approved Report stage.")
+    report_stage = reports[0]
+    report_artifact = report_stage["artifact"]
+    existing = [
+        item
+        for item in state["artifacts"]
+        if item.get("kind") == "final_report"
+        and item.get("metadata", {}).get("report_artifact_id") == report_artifact["artifact_id"]
+        and not item.get("superseded_by")
+    ]
+    if existing:
+        path = resolve_within(run_dir, existing[-1]["path"])
+        if path.is_file() and sha256_file(path) == existing[-1]["sha256"]:
+            return existing[-1]
+        raise ValueError("Existing final report artifact is missing or changed.")
+
+    reviews = [
+        stage
+        for stage in state["stages"]
+        if stage["role"] == "growth-review" and stage["status"] == "approved" and stage.get("artifact")
+    ]
+    if not reviews:
+        raise ValueError("Final report publication requires an approved passing Review stage.")
+    review_stage = reviews[-1]
+    review_output = _verified_stage_output(run_dir, review_stage)
+    review_decision = review_output.get("role_payload", {}).get("decision")
+    if review_decision not in {"PASS", "PASS_WITH_RISKS"}:
+        raise ValueError("Final report publication requires a passing Review decision.")
+    active = [item for item in state["artifacts"] if not item.get("superseded_by")]
+    lineage = next((item for item in reversed(active) if item.get("kind") == "metric_lineage_latest"), None)
+    chart_manifest = next((item for item in reversed(active) if item.get("kind") == "chart_manifest"), None)
+    input_artifact_ids = [report_artifact["artifact_id"], review_stage["artifact"]["artifact_id"]]
+    if lineage:
+        input_artifact_ids.append(lineage["artifact_id"])
+    if chart_manifest:
+        input_artifact_ids.append(chart_manifest["artifact_id"])
+
+    lease = begin_execution_lease(
+        run_dir,
+        "final_report",
+        report_stage["stage_id"],
+        report_stage["attempt"],
+        input_artifact_ids=input_artifact_ids,
+        timeout_seconds=300,
+    )
+    staging = resolve_within(run_dir, lease["staging_path"])
+    source_markdown = resolve_within(run_dir, report_artifact["markdown_path"])
+    staged_report = staging / "final-report.md"
+    try:
+        atomic_copy_file(source_markdown, staged_report)
+        if staged_report.stat().st_size == 0:
+            raise ValueError("Final report content is empty.")
+        report_digest = sha256_file(staged_report)
+        output_relative = f"final/reports/report-r{report_stage['attempt']}-{report_digest[:12]}"
+        final_report_relative = f"{output_relative}/final-report.md"
+        manifest_relative = f"{output_relative}/final-report-manifest.json"
+        manifest = {
+            "schema_version": CURRENT_CONTRACT_VERSION,
+            "run_id": state["run_id"],
+            "lease_id": lease["lease_id"],
+            "report_stage_id": report_stage["stage_id"],
+            "report_artifact_id": report_artifact["artifact_id"],
+            "report_stage_sha256": report_artifact["sha256"],
+            "review_artifact_id": review_stage["artifact"]["artifact_id"],
+            "review_decision": review_decision,
+            "lineage_artifact_id": lineage["artifact_id"] if lineage else None,
+            "chart_manifest_artifact_id": chart_manifest["artifact_id"] if chart_manifest else None,
+            "final_report_path": final_report_relative,
+            "final_report_sha256": report_digest,
+            "final_report_bytes": staged_report.stat().st_size,
+            "created_at": utc_now(),
+        }
+        validate_schema(manifest, SCHEMA_DIR / "final-report-manifest.schema.json")
+        staged_manifest = staging / "final-report-manifest.json"
+        atomic_write_json(staged_manifest, manifest)
+    except Exception:
+        abort_execution_lease(run_dir, lease["lease_id"], "final_report_render_failed")
+        raise
+
+    with RunLock(run_dir):
+        state = load_state(run_dir, for_update=True)
+        current_lease = _find_execution_lease(state, lease["lease_id"])
+        try:
+            _validate_execution_lease_locked(run_dir, state, current_lease)
+        except ValueError:
+            _abort_execution_lease_locked(current_lease, "final_report_inputs_changed")
+            _commit(
+                run_dir,
+                state,
+                "execution_lease_aborted",
+                {"lease_id": current_lease["lease_id"], "reason": current_lease["abort_reason"]},
+            )
+            raise
+        current_lease["output_path"] = output_relative
+        current_lease["state"] = "publishing"
+        current_lease["updated_at"] = utc_now()
+        final_report_record = {
+            "artifact_id": new_id("final_report"),
+            "kind": "final_report",
+            "path": final_report_relative,
+            "sha256": report_digest,
+            "metadata": {
+                "lease_id": current_lease["lease_id"],
+                "report_stage_id": report_stage["stage_id"],
+                "report_artifact_id": report_artifact["artifact_id"],
+                "report_stage_sha256": report_artifact["sha256"],
+                "review_artifact_id": review_stage["artifact"]["artifact_id"],
+                "review_decision": review_decision,
+                "lineage_artifact_id": lineage["artifact_id"] if lineage else None,
+                "chart_manifest_artifact_id": chart_manifest["artifact_id"] if chart_manifest else None,
+            },
+        }
+        manifest_record = {
+            "artifact_id": new_id("final_report_manifest"),
+            "kind": "final_report_manifest",
+            "path": manifest_relative,
+            "sha256": sha256_file(staged_manifest),
+            "metadata": {"lease_id": current_lease["lease_id"], "final_report_artifact_id": final_report_record["artifact_id"]},
+        }
+        _commit(
+            run_dir,
+            state,
+            "execution_lease_publishing",
+            {
+                "lease_id": current_lease["lease_id"],
+                "output_path": output_relative,
+                "artifacts": [deepcopy(final_report_record), deepcopy(manifest_record)],
+            },
+        )
+        output_dir = resolve_within(run_dir, output_relative)
+        if output_dir.exists():
+            _abort_execution_lease_locked(current_lease, "immutable_output_already_exists")
+            _commit(run_dir, state, "execution_lease_aborted", {"lease_id": current_lease["lease_id"], "reason": current_lease["abort_reason"]})
+            raise ValueError("Immutable final report directory already exists.")
+        output_dir.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(resolve_within(run_dir, current_lease["staging_path"]), output_dir)
+        state["artifacts"].extend([final_report_record, manifest_record])
+        current_lease["state"] = "completed"
+        current_lease["updated_at"] = utc_now()
+        current_lease["published_artifact_ids"] = [final_report_record["artifact_id"], manifest_record["artifact_id"]]
+        _commit(
+            run_dir,
+            state,
+            "final_report_published",
+            {"lease_id": current_lease["lease_id"], "artifacts": [final_report_record, manifest_record]},
+        )
+        return final_report_record
+
+
 def finalize_run(run_dir: Path) -> dict[str, Any]:
     with RunLock(run_dir):
-        state = load_state(run_dir)
+        state = load_state(run_dir, for_update=True)
         if state["status"] != "finalizing":
             raise ValueError(f"Run cannot finalize from status {state['status']}.")
         consistency_errors = audit_run(run_dir)
@@ -1775,34 +3047,31 @@ def finalize_run(run_dir: Path) -> dict[str, Any]:
         reports = [
             stage
             for stage in state["stages"]
-            if stage["role"] == "growth-report" and stage["status"] == "completed"
+            if stage["role"] == "growth-report" and stage["status"] == "approved" and stage.get("artifact")
         ]
-        report_stages = [stage for stage in state["stages"] if stage["role"] == "growth-report"]
-        if report_stages:
-            if len(reports) != 1:
-                raise ValueError("Finalization requires exactly one completed Report stage.")
-            _verified_stage_output(run_dir, reports[0])
-        elif any(stage["status"] not in {"approved", "completed", "skipped"} for stage in state["stages"]):
-            raise ValueError("Finalization requires every routed stage to be approved, completed, or skipped.")
+        if len(reports) != 1:
+            raise ValueError("Finalization requires exactly one user-approved Report stage.")
+        _verified_stage_output(run_dir, reports[0])
+        if any(stage["status"] not in {"approved", "skipped"} for stage in state["stages"]):
+            raise ValueError("Finalization requires every routed stage to be approved or skipped.")
         active_artifacts = [item for item in state["artifacts"] if not item.get("superseded_by")]
         active_kinds = {item.get("kind") for item in active_artifacts}
         if any(stage["role"] == "growth-metrics" and stage["status"] in {"approved", "completed"} for stage in state["stages"]):
             if "metric_lineage_latest" not in active_kinds:
                 raise ValueError("Finalization requires rebuilt metric lineage after Report.")
-            if reports:
-                report_hash = reports[0]["artifact"]["sha256"]
-                report_index = next(
-                    index
-                    for index, artifact in enumerate(state["artifacts"])
-                    if artifact.get("stage_id") == reports[0]["stage_id"] and artifact.get("sha256") == report_hash
-                )
-                lineage_indices = [
-                    index
-                    for index, artifact in enumerate(state["artifacts"])
-                    if artifact.get("kind") == "metric_lineage_latest" and not artifact.get("superseded_by")
-                ]
-                if not lineage_indices or lineage_indices[-1] <= report_index:
-                    raise ValueError("Finalization requires metric lineage to be rebuilt after Report.")
+            report_hash = reports[0]["artifact"]["sha256"]
+            report_index = next(
+                index
+                for index, artifact in enumerate(state["artifacts"])
+                if artifact.get("stage_id") == reports[0]["stage_id"] and artifact.get("sha256") == report_hash
+            )
+            lineage_indices = [
+                index
+                for index, artifact in enumerate(state["artifacts"])
+                if artifact.get("kind") == "metric_lineage_latest" and not artifact.get("superseded_by")
+            ]
+            if not lineage_indices or lineage_indices[-1] <= report_index:
+                raise ValueError("Finalization requires metric lineage to be rebuilt after Report.")
         visualizations = [
             stage
             for stage in state["stages"]
@@ -1826,31 +3095,72 @@ def finalize_run(run_dir: Path) -> dict[str, Any]:
                 raise ValueError(f"Finalization artifact is missing or changed: {artifact['path']}")
             if artifact.get("kind") == "metric_lineage_latest":
                 lineage = load_json(path)
-                validate_schema(lineage, SCHEMA_DIR / "metric-lineage.schema.json")
+                _validate_metric_lineage(lineage)
             if artifact.get("kind") == "chart_manifest":
                 chart_manifest = load_json(path)
-                validate_schema(chart_manifest, SCHEMA_DIR / "chart-render-manifest.schema.json")
+                _validate_chart_manifest(chart_manifest)
                 failed = [item["chart_id"] for item in chart_manifest["charts"] if item["status"] == "failed"]
                 if failed:
                     raise ValueError("Finalization found failed chart renders: " + ", ".join(failed))
 
+        final_reports = [item for item in active_artifacts if item.get("kind") == "final_report"]
+        final_manifests = [item for item in active_artifacts if item.get("kind") == "final_report_manifest"]
+        if len(final_reports) != 1 or len(final_manifests) != 1:
+            raise ValueError("Finalization requires one registered final report and its manifest.")
+        final_report = final_reports[0]
+        final_report_path = resolve_within(run_dir, final_report["path"])
+        if not final_report_path.is_file() or final_report_path.stat().st_size == 0 or sha256_file(final_report_path) != final_report["sha256"]:
+            raise ValueError("Registered final report is missing, empty, or changed.")
+        manifest_path = resolve_within(run_dir, final_manifests[0]["path"])
+        if not manifest_path.is_file() or sha256_file(manifest_path) != final_manifests[0]["sha256"]:
+            raise ValueError("Registered final report manifest is missing or changed.")
+        final_manifest = load_json(manifest_path)
+        validate_schema(final_manifest, SCHEMA_DIR / "final-report-manifest.schema.json")
+        review_stage = next(
+            (
+                item
+                for item in reversed(state["stages"])
+                if item["role"] == "growth-review" and item["status"] == "approved" and item.get("artifact")
+            ),
+            None,
+        )
+        current_lineage = next((item for item in reversed(active_artifacts) if item.get("kind") == "metric_lineage_latest"), None)
+        current_chart_manifest = next((item for item in reversed(active_artifacts) if item.get("kind") == "chart_manifest"), None)
+        expected_manifest_bindings = {
+            "report_artifact_id": reports[0]["artifact"]["artifact_id"],
+            "report_stage_sha256": reports[0]["artifact"]["sha256"],
+            "review_artifact_id": review_stage["artifact"]["artifact_id"] if review_stage else None,
+            "lineage_artifact_id": current_lineage["artifact_id"] if current_lineage else None,
+            "chart_manifest_artifact_id": current_chart_manifest["artifact_id"] if current_chart_manifest else None,
+            "final_report_path": final_report["path"],
+            "final_report_sha256": final_report["sha256"],
+        }
+        if any(final_manifest.get(key) != expected for key, expected in expected_manifest_bindings.items()):
+            raise ValueError("Final report manifest is not bound to the current Report, Review, lineage, and charts.")
+        if any(lease["state"] in {"prepared", "executing", "publishing"} for lease in state.get("execution_leases", [])):
+            raise ValueError("Finalization cannot proceed while an execution lease is active.")
+
         summary = build_run_summary(run_dir)
+        finalization_errors = audit_run(run_dir)
+        if finalization_errors:
+            raise ValueError(
+                "Run changed during finalization consistency check:\n- " + "\n- ".join(finalization_errors)
+            )
         summary.pop("state_sha256", None)
         summary["status"] = "completed"
         summary["state_revision"] = state["revision"] + 1
         summary["finalization_base_state_sha256"] = sha256_json(state)
+        summary["final_report_artifact_id"] = final_report["artifact_id"]
         summary["recommended_action"] = "No workflow action is required."
-        output = run_dir / "final" / "run-summary.json"
+        output = run_dir / "final" / "summaries" / f"run-summary-r{state['revision'] + 1}.json"
         atomic_write_json(output, summary)
         record = {
             "artifact_id": new_id("run_summary"),
             "kind": "run_summary",
-            "path": "final/run-summary.json",
+            "path": str(output.relative_to(run_dir.resolve())).replace("\\", "/"),
             "sha256": sha256_file(output),
+            "metadata": {"final_report_artifact_id": final_report["artifact_id"]},
         }
-        for old in state["artifacts"]:
-            if old.get("kind") == "run_summary" and not old.get("superseded_by"):
-                old["superseded_by"] = record["artifact_id"]
         state["artifacts"].append(record)
         _set_status(state, "completed")
         _commit(run_dir, state, "run_finalized", {"run_summary": record})
@@ -1859,7 +3169,7 @@ def finalize_run(run_dir: Path) -> dict[str, Any]:
 
 def resume(run_dir: Path) -> dict[str, Any]:
     with RunLock(run_dir):
-        state = load_state(run_dir)
+        state = load_state(run_dir, for_update=True)
         if state["status"] not in {"running", "validating", "finalizing", "stopped", "blocked", "failed"}:
             raise ValueError(f"Run cannot resume from status {state['status']}.")
         interrupted = state.get("current_stage") or state.get("pending_stage")
@@ -1899,9 +3209,10 @@ def resume(run_dir: Path) -> dict[str, Any]:
             target = "awaiting_route_confirmation"
         if target != original_status and target not in ALLOWED_TRANSITIONS[original_status]:
             raise ValueError(f"Saved resume boundary {target!r} is not legal from {original_status!r}.")
+        aborted_leases = _abort_active_execution_leases(state, "resume_recovery")
         _set_status(state, target)
         state["resume_status"] = None
-        _commit(run_dir, state, "run_resumed", {"status": target})
+        _commit(run_dir, state, "run_resumed", {"status": target, "aborted_leases": aborted_leases})
         return state
 
 
@@ -1910,7 +3221,7 @@ def _print(value: Any) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Control a Multi-Agent Data Analysis v1.1 run.")
+    parser = argparse.ArgumentParser(description=f"Control a Multi-Agent Data Analysis v{CURRENT_CONTRACT_VERSION} run.")
     sub = parser.add_subparsers(dest="command", required=True)
 
     init_parser = sub.add_parser("init")
@@ -1935,6 +3246,17 @@ def main() -> int:
     runtime_parser.add_argument("--input-tokens", type=int)
     runtime_parser.add_argument("--output-tokens", type=int)
 
+    receipt_parser = sub.add_parser("record-agent-receipt")
+    receipt_parser.add_argument("--run-dir", type=Path, required=True)
+    receipt_parser.add_argument("--stage-id", required=True)
+    receipt_parser.add_argument("--raw-response", type=Path, required=True)
+    receipt_parser.add_argument("--stage-json", type=Path, required=True)
+    receipt_parser.add_argument("--agent-id")
+    receipt_parser.add_argument("--model")
+    receipt_parser.add_argument("--input-tokens", type=int)
+    receipt_parser.add_argument("--output-tokens", type=int)
+    receipt_parser.add_argument("--capture-method", choices=["root_cli", "codex_tool_result"], default="root_cli")
+
     record_parser = sub.add_parser("record-stage")
     record_parser.add_argument("--run-dir", type=Path, required=True)
     record_parser.add_argument("--stage-json", type=Path, required=True)
@@ -1950,6 +3272,7 @@ def main() -> int:
     approve_parser.add_argument("--action", required=True)
     approve_parser.add_argument("--user-text", required=True)
     approve_parser.add_argument("--idempotency-key", required=True)
+    approve_parser.add_argument("--source-surface", default="codex")
 
     query_parser = sub.add_parser("prepare-query")
     query_parser.add_argument("--run-dir", type=Path, required=True)
@@ -1993,9 +3316,18 @@ def main() -> int:
     recover_parser = sub.add_parser("recover")
     recover_parser.add_argument("--run-dir", type=Path, required=True)
 
+    recover_executions_parser = sub.add_parser("recover-executions")
+    recover_executions_parser.add_argument("--run-dir", type=Path, required=True)
+
+    migrate_parser = sub.add_parser("migrate")
+    migrate_parser.add_argument("--run-dir", type=Path, required=True)
+
     summary_parser = sub.add_parser("summary")
     summary_parser.add_argument("--run-dir", type=Path, required=True)
     summary_parser.add_argument("--output", type=Path)
+
+    publish_report_parser = sub.add_parser("publish-final-report")
+    publish_report_parser.add_argument("--run-dir", type=Path, required=True)
 
     finalize_parser = sub.add_parser("finalize")
     finalize_parser.add_argument("--run-dir", type=Path, required=True)
@@ -2012,10 +3344,36 @@ def main() -> int:
             _print({"attempt_dir": str(start_stage(args.run_dir, args.stage_id))})
         elif args.command == "record-agent-runtime":
             _print(record_agent_runtime(args.run_dir, args.stage_id, args.thread_id, args.model, args.input_tokens, args.output_tokens))
+        elif args.command == "record-agent-receipt":
+            _print(
+                record_agent_receipt(
+                    args.run_dir,
+                    args.stage_id,
+                    args.raw_response,
+                    args.stage_json,
+                    args.agent_id,
+                    args.model,
+                    args.input_tokens,
+                    args.output_tokens,
+                    args.capture_method,
+                )
+            )
         elif args.command == "record-stage":
             _print(record_stage(args.run_dir, args.stage_json, args.stage_markdown, args.validation_report))
         elif args.command == "approve":
-            _print(approve(args.run_dir, args.approval_type, args.subject_id, args.subject_revision, args.subject_sha256, args.action, args.user_text, args.idempotency_key))
+            _print(
+                approve(
+                    args.run_dir,
+                    args.approval_type,
+                    args.subject_id,
+                    args.subject_revision,
+                    args.subject_sha256,
+                    args.action,
+                    args.user_text,
+                    args.idempotency_key,
+                    args.source_surface,
+                )
+            )
         elif args.command == "prepare-query":
             _print(
                 prepare_query(
@@ -2048,8 +3406,14 @@ def main() -> int:
             return 0 if not errors else 2
         elif args.command == "recover":
             _print(recover_state(args.run_dir))
+        elif args.command == "recover-executions":
+            _print(recover_execution_leases(args.run_dir))
+        elif args.command == "migrate":
+            _print(migrate_run(args.run_dir))
         elif args.command == "summary":
             _print(build_run_summary(args.run_dir, args.output))
+        elif args.command == "publish-final-report":
+            _print(publish_final_report(args.run_dir))
         elif args.command == "finalize":
             _print(finalize_run(args.run_dir))
     except (OSError, ValueError, TimeoutError, json.JSONDecodeError) as exc:

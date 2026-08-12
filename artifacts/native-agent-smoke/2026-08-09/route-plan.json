@@ -1,0 +1,96 @@
+{
+  "created_at": "2026-08-09T15:10:03.849Z",
+  "fallback_route": null,
+  "input_bindings": [
+    {
+      "artifact_id": "request_52709c83cf53de59",
+      "input_name": "business_question",
+      "input_type": "business_question",
+      "path": "request.json",
+      "sha256": "52709c83cf53de596f0f54f7328fb3204bf6ab74d609b400e942dc8a1ddec990",
+      "source": "request"
+    },
+    {
+      "artifact_id": "request_52709c83cf53de59",
+      "input_name": "business_context",
+      "input_type": "business_context",
+      "path": "request.json",
+      "sha256": "52709c83cf53de596f0f54f7328fb3204bf6ab74d609b400e942dc8a1ddec990",
+      "source": "request"
+    },
+    {
+      "artifact_id": "request_52709c83cf53de59",
+      "input_name": "available_schema",
+      "input_type": "available_schema",
+      "path": "request.json",
+      "sha256": "52709c83cf53de596f0f54f7328fb3204bf6ab74d609b400e942dc8a1ddec990",
+      "source": "request"
+    },
+    {
+      "artifact_id": "request_52709c83cf53de59",
+      "input_name": "user_metric",
+      "input_type": "user_metric",
+      "path": "request.json",
+      "sha256": "52709c83cf53de596f0f54f7328fb3204bf6ab74d609b400e942dc8a1ddec990",
+      "source": "request"
+    }
+  ],
+  "missing_inputs": [],
+  "provided_inputs": [
+    "business_question",
+    "business_context",
+    "available_schema",
+    "user_metric"
+  ],
+  "required_inputs": [
+    "business_question",
+    "business_context",
+    "available_schema",
+    "user_metric"
+  ],
+  "reused_approved_artifacts": [],
+  "route_id": "route-test",
+  "route_revision": 1,
+  "schema_version": "1.2",
+  "stages": [
+    {
+      "depends_on": [],
+      "expected_outputs": [
+        "growth-business.json"
+      ],
+      "required_inputs": [],
+      "role": "growth-business",
+      "sequence": 1,
+      "stage_id": "s01-business",
+      "status": "pending"
+    },
+    {
+      "depends_on": [
+        "s01-business"
+      ],
+      "expected_outputs": [
+        "growth-metrics.json"
+      ],
+      "required_inputs": [],
+      "role": "growth-metrics",
+      "sequence": 2,
+      "stage_id": "s02-metrics",
+      "status": "pending"
+    },
+    {
+      "depends_on": [
+        "s02-metrics"
+      ],
+      "expected_outputs": [
+        "growth-review.json"
+      ],
+      "required_inputs": [],
+      "role": "growth-review",
+      "sequence": 3,
+      "stage_id": "s03-review",
+      "status": "pending"
+    }
+  ],
+  "task_type": "metric design and independent review",
+  "user_adjustments": []
+}

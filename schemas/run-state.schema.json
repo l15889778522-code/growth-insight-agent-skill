@@ -32,6 +32,9 @@
         "max_result_bytes": {"type": "integer", "minimum": 1024, "maximum": 1073741824},
         "approved": {"type": "boolean"},
         "approval_id": {"type": ["string", "null"]}
+        ,"request_path": {"type": "string", "minLength": 1}
+        ,"request_sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"}
+        ,"sql_path": {"type": "string", "minLength": 1}
       }
     },
     "pendingMetricEdit": {
@@ -53,6 +56,7 @@
       "additionalProperties": false,
       "required": ["stage_id", "revision", "json_path", "markdown_path", "markdown_sha256", "validation_path", "validation_sha256", "sha256", "stage_status"],
       "properties": {
+        "artifact_id": {"type": "string", "minLength": 1},
         "stage_id": {"type": "string", "minLength": 1},
         "revision": {"type": "integer", "minimum": 1},
         "json_path": {"type": "string", "minLength": 1},
@@ -61,7 +65,11 @@
         "validation_path": {"type": "string", "minLength": 1},
         "validation_sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
         "sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
-        "stage_status": {"enum": ["PASS", "PASS_WITH_RISKS", "BLOCKED", "FAIL"]}
+        "stage_status": {"enum": ["PASS", "PASS_WITH_RISKS", "BLOCKED", "FAIL"]},
+        "receipt_path": {"type": "string", "minLength": 1},
+        "receipt_sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
+        "raw_response_path": {"type": "string", "minLength": 1},
+        "raw_response_sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"}
       }
     },
     "fileArtifactRecord": {
@@ -87,6 +95,7 @@
         "completed_at": {"type": ["string", "null"], "format": "date-time"},
         "elapsed_ms": {"type": ["integer", "null"], "minimum": 0},
         "thread_id": {"type": ["string", "null"]},
+        "agent_id": {"type": ["string", "null"]},
         "model": {"type": ["string", "null"]},
         "model_reasoning_effort": {"type": ["string", "null"]},
         "token_usage": {
@@ -99,8 +108,18 @@
             "total_tokens": {"type": ["integer", "null"], "minimum": 0}
           }
         },
-        "failure_class": {"type": ["string", "null"]}
+        "failure_class": {"type": ["string", "null"]},
+        "receipt_path": {"type": ["string", "null"]},
+        "receipt_sha256": {"type": ["string", "null"], "pattern": "^[A-Fa-f0-9]{64}$"},
+        "raw_response_path": {"type": ["string", "null"]},
+        "raw_response_sha256": {"type": ["string", "null"], "pattern": "^[A-Fa-f0-9]{64}$"},
+        "provenance_trust_level": {"type": ["string", "null"], "enum": [null, "self_asserted", "host_observed", "host_signed"]},
+        "capture_method": {"type": ["string", "null"], "enum": [null, "root_cli", "codex_tool_result", "migration"]},
+        "missing_metadata": {"type": "array", "items": {"enum": ["agent_id", "model", "token_usage"]}, "uniqueItems": true}
       }
+    },
+    "executionLease": {
+      "$ref": "execution-lease.schema.json"
     }
   },
   "type": "object",
@@ -128,7 +147,7 @@
     "updated_at"
   ],
   "properties": {
-    "schema_version": {"const": "1.1"},
+    "schema_version": {"enum": ["1.1", "1.2"]},
     "run_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$"},
     "revision": {"type": "integer", "minimum": 0},
     "status": {
@@ -169,7 +188,8 @@
             }
           }
         },
-        "surface": {"type": ["string", "null"]}
+        "surface": {"type": ["string", "null"]},
+        "contract_version": {"enum": ["1.1", "1.2"]}
       }
     },
     "route_id": {"type": ["string", "null"]},
@@ -195,6 +215,7 @@
             "additionalProperties": false,
             "required": ["revision", "json_path", "markdown_path", "markdown_sha256", "validation_path", "validation_sha256", "sha256", "stage_status"],
             "properties": {
+              "artifact_id": {"type": "string", "minLength": 1},
               "revision": {"type": "integer", "minimum": 1},
               "json_path": {"type": "string", "minLength": 1},
               "markdown_path": {"type": "string", "minLength": 1},
@@ -202,7 +223,11 @@
               "validation_path": {"type": "string", "minLength": 1},
               "validation_sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
               "sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
-              "stage_status": {"enum": ["PASS", "PASS_WITH_RISKS", "BLOCKED", "FAIL"]}
+              "stage_status": {"enum": ["PASS", "PASS_WITH_RISKS", "BLOCKED", "FAIL"]},
+              "receipt_path": {"type": "string", "minLength": 1},
+              "receipt_sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
+              "raw_response_path": {"type": "string", "minLength": 1},
+              "raw_response_sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"}
             }
           },
           "runtime": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/attemptRuntime"}]},
@@ -230,6 +255,7 @@
     "pending_approval": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/pendingApproval"}]},
     "pending_query": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/pendingQuery"}]},
     "pending_metric_edit": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/pendingMetricEdit"}]},
+    "execution_leases": {"type": "array", "items": {"$ref": "#/$defs/executionLease"}},
     "artifacts": {"type": "array", "items": {"anyOf": [{"$ref": "#/$defs/stageArtifactRecord"}, {"$ref": "#/$defs/fileArtifactRecord"}]}},
     "data_source": {
       "anyOf": [
@@ -250,5 +276,11 @@
     "resume_status": {"type": ["string", "null"], "enum": [null, "initialized", "awaiting_route_confirmation", "running", "validating", "finalizing", "awaiting_user_confirmation", "awaiting_query_confirmation", "revising", "blocked", "failed"]},
     "created_at": {"type": "string", "format": "date-time"},
     "updated_at": {"type": "string", "format": "date-time"}
-  }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"schema_version": {"const": "1.2"}}},
+      "then": {"required": ["execution_leases"]}
+    }
+  ]
 }

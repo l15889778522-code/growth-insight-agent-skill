@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.multi-agent-data-analysis/schemas/chart-render-manifest-v1.2.schema.json",
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
+    "renderPrecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_representation", "render_representation", "lossy_values", "max_absolute_error"],
+      "properties": {
+        "source_representation": {"const": "decimal_text"},
+        "render_representation": {"const": "binary64"},
+        "lossy_values": {"type": "integer", "minimum": 0},
+        "max_absolute_error": {"type": "string", "minLength": 1}
+      }
+    },
+    "dataProcessing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_points",
+        "rows_read",
+        "rows_matched",
+        "input_points",
+        "population_lower_bound",
+        "output_points",
+        "passes",
+        "method",
+        "sampling_applied",
+        "sampling_seed_sha256",
+        "aggregation",
+        "axis",
+        "precision"
+      ],
+      "properties": {
+        "max_points": {"type": "integer", "minimum": 1},
+        "rows_read": {"type": "integer", "minimum": 0},
+        "rows_matched": {"type": "integer", "minimum": 0},
+        "input_points": {"type": ["integer", "null"], "minimum": 0},
+        "population_lower_bound": {"type": ["integer", "null"], "minimum": 0},
+        "output_points": {"type": "integer", "minimum": 0},
+        "passes": {"type": "integer", "minimum": 1, "maximum": 2},
+        "method": {
+          "enum": [
+            "streaming_bounded_read",
+            "streaming_deterministic_hash_sample",
+            "streaming_exact_aggregation",
+            "streaming_group_hash_sample_then_exact_aggregation"
+          ]
+        },
+        "sampling_applied": {"type": "boolean"},
+        "sampling_seed_sha256": {"$ref": "#/$defs/hash"},
+        "aggregation": {"enum": ["none", "sum", "mean", "count"]},
+        "axis": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["kind", "ordering", "timezone", "degradations"],
+          "properties": {
+            "kind": {"enum": ["empty", "numeric", "temporal", "categorical"]},
+            "ordering": {"enum": ["none", "source_order", "numeric_ascending", "utc_ascending", "lexical_ascending"]},
+            "timezone": {"type": ["string", "null"]},
+            "degradations": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+          }
+        },
+        "precision": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["arithmetic", "decimal_context_precision", "arithmetic_inexact", "x_render", "y_render"],
+          "properties": {
+            "arithmetic": {"const": "decimal"},
+            "decimal_context_precision": {"type": "integer", "minimum": 1},
+            "arithmetic_inexact": {"type": "boolean"},
+            "x_render": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/renderPrecision"}]},
+            "y_render": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/renderPrecision"}]}
+          }
+        }
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "revision",
+    "render_identity",
+    "spec_path",
+    "spec_sha256",
+    "source_file",
+    "source_sha256",
+    "source_artifact",
+    "render_policy",
+    "rendered_at",
+    "charts"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.2"},
+    "revision": {"type": "integer", "minimum": 1},
+    "render_identity": {"$ref": "#/$defs/hash"},
+    "spec_path": {"type": "string", "minLength": 1},
+    "spec_sha256": {"$ref": "#/$defs/hash"},
+    "source_file": {"type": "string", "minLength": 1},
+    "source_sha256": {"$ref": "#/$defs/hash"},
+    "source_artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "kind", "path", "sha256"],
+      "properties": {
+        "artifact_id": {"type": "string", "minLength": 1},
+        "kind": {"enum": ["query_result", "user_result"]},
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "render_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_points", "unaggregated_method", "aggregated_method", "decimal_context_precision", "plotly_js"],
+      "properties": {
+        "max_points": {"type": "integer", "minimum": 1},
+        "unaggregated_method": {"const": "streaming_deterministic_hash_sample"},
+        "aggregated_method": {"const": "streaming_group_hash_sample_then_exact_aggregation"},
+        "decimal_context_precision": {"type": "integer", "minimum": 1},
+        "plotly_js": {"enum": ["cdn", "inline"]}
+      }
+    },
+    "rendered_at": {"type": "string", "format": "date-time"},
+    "charts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["chart_id", "status", "outputs", "error", "data_processing"],
+        "properties": {
+          "chart_id": {"type": "string", "minLength": 1},
+          "status": {"enum": ["rendered", "failed", "blocked_by_missing_data"]},
+          "outputs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["format", "path", "sha256"],
+              "properties": {
+                "format": {"enum": ["png", "html"]},
+                "path": {"type": "string", "minLength": 1},
+                "sha256": {"$ref": "#/$defs/hash"}
+              }
+            }
+          },
+          "error": {"type": ["string", "null"]},
+          "data_processing": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/dataProcessing"}]}
+        }
+      }
+    }
+  }
+}

@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from evidence import format_evidence_reference
 from runtime_common import atomic_write_text, load_json
 from validate_stage_output import validate_stage
 
@@ -42,6 +43,8 @@ SECTION_LABELS = {
 def _render_item(item: Any) -> str:
     if isinstance(item, str):
         return item
+    if isinstance(item, dict) and {"artifact_id", "sha256", "selector_type", "selector_value"} <= set(item):
+        return format_evidence_reference(item)
     return "```json\n" + json.dumps(item, ensure_ascii=False, indent=2, sort_keys=True) + "\n```"
 
 
@@ -82,7 +85,8 @@ def _render_final_report(stage: dict[str, Any]) -> str:
         lines.extend(["| ID | 建议 | 指标 | 证据 |", "|---|---|---|---|"])
         for item in payload["recommendations"]:
             metric_ids = ", ".join(item["metric_ids"]) or "-"
-            evidence_refs = ", ".join(item["evidence_refs"]) or "-"
+            evidence_refs = ", ".join(format_evidence_reference(ref) for ref in item["evidence_refs"]) or "-"
+            evidence_refs = evidence_refs.replace("|", "\\|").replace("\n", " ")
             text = item["text"].replace("|", "\\|")
             lines.append(f"| `{item['recommendation_id']}` | {text} | {metric_ids} | {evidence_refs} |")
         lines.append("")
