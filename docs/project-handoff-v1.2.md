@@ -80,16 +80,16 @@
 |---|---|---|
 | GitHub 仓库 | `https://github.com/l15889778522-code/growth-insight-agent-skill` | `DONE` |
 | 当前分支 | `agent/sequential-multi-agent-pipeline` | `DONE` |
-| 草稿 PR | `#1 Implement auditable data analysis skill v1.2` | `PARTIAL` |
+| 发布 PR | `#1 Implement auditable data analysis skill v1.2`；已获用户批准，可转为 Ready 并合并 | `PARTIAL` |
 | PR 地址 | `https://github.com/l15889778522-code/growth-insight-agent-skill/pull/1` | `DONE` |
 | v1.2 主提交 | `a5e42a3 Implement auditable data analysis skill v1.2` | `DONE` |
 | 最新 v1.2.1 收尾实现提交 | `83f2274 Harden interrupted MySQL streams` | `DONE` |
 | 本地与远端分支 | 已同步到确定性发布门全绿基线，本文档状态提交后再次推送 | `DONE` |
-| PR 合并 | 尚未合并 | `BLOCKED` |
-| `v1.2.1` 标签 | 尚未创建 | `BLOCKED` |
-| GitHub Release | 尚未创建 | `BLOCKED` |
+| PR 合并 | 本文档冻结时尚未合并；用户已授权执行 | `PARTIAL` |
+| `v1.2.1` 标签 | 本文档冻结时尚未创建；用户已授权执行 | `PARTIAL` |
+| GitHub Release | 本文档冻结时尚未创建；用户已授权执行 | `PARTIAL` |
 
-v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布收尾以 `83f2274` 为最新实现基线。Actions run `31656838504` 已在同一最新代码基线上完成 Windows/Ubuntu 六版本矩阵、两套干净安装和真实 MySQL 8.4，九项检查全部通过。第二台 Codex 验收尚未执行，真实三模式评测已按用户要求暂缓，因此当前仍不能描述为正式发布。
+v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布收尾以 `83f2274` 为最新实现基线。Actions run `31656838504` 已在同一最新代码基线上完成 Windows/Ubuntu 六版本矩阵、两套干净安装和真实 MySQL 8.4，九项检查全部通过。2026-08-13 用户明确接受第二台 Codex 尚未验收的已知风险，并授权先发布 v1.2.1。真实三模式评测继续延期，发布后只能按用户指令一次运行一个模式。本文档记录的是发布操作前的冻结状态；正式发布结果以 PR、`v1.2.1` 标签和 GitHub Release 页面为准。
 
 ### 2.2 版本语义
 
@@ -304,8 +304,8 @@ v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布�
 
 ### 4.1 v1.2.1 发布阻塞项
 
-总体状态：`BLOCKED`
-优先级：最高，完成前不得开始 v1.3。
+总体状态：`PARTIAL`（确定性发布门已完成，跨设备和真实评测经用户批准延期）
+优先级：最高，完成 GitHub 发布操作后再开始 v1.3。
 
 1. `DONE`：已使用兼容 Windows PowerShell 的 .NET SHA-256 文件计算函数替换两处 `Get-FileHash`，本地专项通过。
 2. `DONE`：Windows、Ubuntu 上 Python 3.11、3.12、3.13 已在 Actions run `31656838504` 全部通过。
@@ -313,11 +313,11 @@ v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布�
 4. `DONE`：本地 Windows 中文目录生命周期和 GitHub 干净检出的 Ubuntu/Windows 独立任务均已通过。
 5. `DONE`：GitHub Actions 临时 MySQL 8.4 服务、一次性 Schema、2505 行测试数据、TLS 只读账号和无凭据身份输出已在 run `31656838504` 真实运行。
 6. `DONE`：真实 MySQL 已通过只读拒绝、TLS、超时、行数/字节限制、流式读取、`utf8mb4`、Decimal、中途断连和新连接重试。执行租约恢复继续由离线测试证明。
-7. `BLOCKED`：在真实第二台同账号 Codex 上克隆仓库，安装 Skill 和 Agent，重启 Codex 后启动至少一个可见原生 Agent，并记录合同版本和 Agent ID。
-8. `DEFERRED`：真实三模式评测按用户当前指令暂缓；在用户重新确认前不得启动任何真实 Agent 评测。
-9. `BLOCKED`：只有前述发布门通过后，才能将草稿 PR 转为可合并状态、合并到 `main`、创建 `v1.2.1` 标签和正式 GitHub Release。
+7. `DEFERRED`：真实第二台同账号 Codex 的安装、重启和可见 Agent smoke 未执行。用户已明确同意该项不再阻塞 v1.2.1，本次 Release 必须列为已知验证缺口。
+8. `DEFERRED`：真实三模式评测按用户当前指令暂缓。发布后按“单 Codex -> 原生自由编排 -> 当前受控 Skill”分开执行；每次只运行一个模式，且每个模式开始前都必须获得用户的单独指令。
+9. `DONE`：用户已在接受上述延期项后授权先发布，可将草稿 PR 转为 Ready、合并到 `main`、创建 `v1.2.1` 标签和正式 GitHub Release。
 
-发布完成定义：Windows 和 Ubuntu CI 全绿、全新克隆安装可用、真实 MySQL 闭环通过、真实第二台 Codex 能加载 Agent，并且发布说明准确列出评测是否已完成。若三模式评测仍因额度被明确延期，则不能在 Release 中宣称 Skill 已证明优于其他模式。
+本次 v1.2.1 发布完成定义：Windows 和 Ubuntu CI 全绿、全新克隆安装可用、真实 MySQL 闭环通过，PR 已合并且 `v1.2.1` 标签和正式 Release 已创建。第二台 Codex 与三模式评测作为用户接受的延期项写入 Release；不得宣称已完成跨设备验证，也不得宣称 Skill 已证明优于其他模式。
 
 ### 4.2 v1.3 效率提升
 
@@ -475,10 +475,10 @@ v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布�
 | 通用 Agent Skill | 不实施 |
 | 外部模型 | Codex 原生优先；额度不足且用户明确启用时，允许验证 DeepSeek 备用后端 |
 | MySQL 发布验证 | 使用 GitHub Actions 临时 MySQL 8.4 |
-| 跨设备验收 | 使用真实第二台同账号 Codex |
+| 跨设备验收 | v1.2.1 明确延期，不再阻塞本次发布；未来仍使用真实第二台同账号 Codex 补验 |
 | 正式评测模式 | 单 Codex、原生自由编排、当前受控 Skill |
 | 旧 v1.0 | 只保留历史档案 |
-| 评测执行 | 因当前额度不足暂缓，恢复后缩减任务数量 |
+| 评测执行 | 暂缓；发布后按模式分步进行，每次只在用户明确指令下启动一个模式 |
 | 指标模板 | 个人层和项目层两层 |
 | v1.3 开发顺序 | 先整理运行时内部结构，再增加功能 |
 | v1.4 首批报告 | Markdown、HTML、Excel |
@@ -488,32 +488,30 @@ v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布�
 
 ## 6. 下一任务恢复顺序
 
-下一位 Codex 必须按以下顺序继续，不应跳过发布门直接开发 v1.3：
+下一位 Codex 必须按以下顺序继续：
 
 1. 阅读本文件并确认当前分支仍为 `agent/sequential-multi-agent-pipeline`，实现基线不早于 `83f2274`。
 2. 检查工作区现有改动，保留用户或其他任务产生的文件，不进行无关回退。
-3. 检查本次推送对应的 Windows/Ubuntu 六版本矩阵、Ubuntu/Windows 干净安装和 MySQL 8.4 三类 CI 任务。
-4. 若 CI 失败，只修复对应确定性发布门，重跑 `137 passed, 2 skipped` 的离线基线和相关专项，不启动 Agent。
-5. CI 全绿后，将 Windows SHA-256、GitHub 干净安装和真实 MySQL 状态更新为 `DONE`，保存不含密码、私钥或连接串的 Actions 证据链接。
-6. 在真实第二台同账号 Codex 完成安装、重启和可见 Agent smoke；当前用户要求暂缓真实 Agent 工作，因此执行前必须再次确认。
-7. 真实三模式 Agent 评测保持 `DEFERRED`；用户额度恢复后再确认精简任务数量。若改用 DeepSeek，先执行第 4.5 节最小兼容 smoke。
-8. DeepSeek 兼容验证是独立备用工作，不改变 v1.2.1 的 Codex 原生发布基准，也不阻塞确定性发布任务。
-9. 除非用户明确取消第二台 Codex 发布门，否则完成该跨设备 smoke 后，才能将 PR 转为可合并状态并合并到 `main`，创建 `v1.2.1` 标签和 GitHub Release。
-10. v1.2.1 正式发布后，才开始 v1.3 的运行时内部整理和效率功能。
+3. 检查 PR `#1`、`v1.2.1` 标签和 GitHub Release：若发布操作尚未完成，使用已经通过的确定性发布证据完成发布，不重新启动 Agent 评测。
+4. 第二台 Codex 验收保持 `DEFERRED`，除非用户之后明确要求补验。
+5. 三模式 Agent 评测保持 `DEFERRED`。用户指定某个模式后，只运行该模式并保存独立结果；不得顺带启动另外两个模式。
+6. 推荐评测顺序为单 Codex、Codex 原生自由编排、当前受控 Skill，但用户的新指令可以调整顺序。
+7. 若改用 DeepSeek，先执行第 4.5 节最小兼容 smoke；DeepSeek 不改变 v1.2.1 的 Codex 原生发布基准。
+8. v1.2.1 正式发布后，才开始 v1.3 的运行时内部整理和效率功能。
 
 恢复任务汇报时必须分别说明：代码是否完成、自动测试是否通过、真实环境是否验证、是否已经正式发布。不得用“已上传”替代“已发布”，不得用 mock 测试替代真实 MySQL 结论。
 
 ## 7. 当前交接验收记录
 
-2026-08-13 已完成不消耗模型额度的自动测试和发布收尾；未启动子 Agent、真实 Agent smoke、三模式评测或 DeepSeek 兼容测试。
+2026-08-13 已完成不消耗模型额度的自动测试和发布收尾；未启动子 Agent、真实 Agent smoke、三模式评测或 DeepSeek 兼容测试。同日用户明确批准跳过第二台 Codex 验收并先发布，三模式评测改为发布后按用户指令一次执行一个模式。
 
 | 检查项 | 预期 |
 |---|---|
 | 分支 | `agent/sequential-multi-agent-pipeline` |
 | 实现提交基线 | `83f2274 Harden interrupted MySQL streams` |
-| PR | `#1` 草稿，尚未合并 |
+| PR | `#1` 在本文档冻结时仍为草稿；已获用户发布授权 |
 | 合同版本 | `1.2` |
-| 发布标签 | `v1.2.1` 尚未创建 |
+| 发布标签 | 本文档冻结时 `v1.2.1` 尚未创建；已获用户发布授权 |
 | 文档敏感信息 | 不包含密码、令牌、私钥或可用数据库连接串 |
 | 本地测试执行 | `137 passed, 2 skipped`；安装器专项 `10 passed` |
 | 干净安装 | 当前 Windows 中文目录和 GitHub Ubuntu/Windows 全部通过 |
