@@ -1,0 +1,162 @@
+{
+  "case_id": "metric-design-custom-edit",
+  "completed": false,
+  "elapsed_ms": 3120054,
+  "gate_bypass_count": 0,
+  "hallucination_count": null,
+  "human_revisions": 1,
+  "mode": "controlled-skill",
+  "notes": [
+    "The approved metric-design route ended at Review and reached finalizing, but finalize_run requires a Report stage; the run therefore cannot reach completed without changing the evaluated route or runtime.",
+    "The Review Agent's initial path-encoding misdiagnosis was corrected before acceptance; its first registered attempt then failed contextual validation for omitted approved decisions, and attempt 2 passed.",
+    "During the run, the user requested a human-editable metrics workbench file; that feature is not implemented in the evaluated Skill version.",
+    "Quality score not measured: no blind-review record was supplied.",
+    "Token usage is unavailable or incomplete in one or more Agent receipts."
+  ],
+  "privilege_violation_count": null,
+  "provenance": {
+    "audit_errors": [],
+    "captured_at": "2026-08-13T03:18:19.411Z",
+    "events_sha256": "90b139d256a34fa3346340a496c04bd71dec2e1eee2c8c54a3ce1ecc6753c713",
+    "run_id": "eval-controlled-skill-metric-design-custom-edit-r01",
+    "run_state_sha256": "0019578cdf3cbe30bcbc4ed4950e6864b0c5d9a8967e92aae6a399aaba75fbda",
+    "source_type": "run_artifacts"
+  },
+  "quality_review": null,
+  "quality_scores": null,
+  "roles_run": [
+    "growth-business",
+    "growth-metrics",
+    "growth-review"
+  ],
+  "rule_checks": {
+    "evidence_resolvable": true,
+    "no_gate_bypass": true,
+    "recovery_success": true,
+    "schema_valid": true,
+    "sql_safe": true
+  },
+  "rule_evidence": {
+    "evidence_resolvable": {
+      "details": [
+        "Resolved 75 structured evidence reference(s)."
+      ],
+      "passed": true,
+      "sources": [
+        {
+          "path": "stages/s01-business/attempt-1/stage-output.json",
+          "sha256": "8cb99856e3c7ab0ce30970d0a45169c52232b403c6c07e49aa9e707c141dee96"
+        },
+        {
+          "path": "request.json",
+          "sha256": "bf8fb064db57b37aafdbbaf8788dc87d976171c8af3b1fb8a117dc08acaae572"
+        },
+        {
+          "path": "stages/s02-metrics/attempt-3/stage-output.json",
+          "sha256": "8b7fdbc3333df5f268c16bec8ef1ce23702d422cbbd45d9935059f5f362e7db4"
+        },
+        {
+          "path": "stages/s02-metrics/attempt-2/stage-output.json",
+          "sha256": "fb2da869d87b1c3b3bf3578f82d0376cf4c53103968df5d5201004a0c1f567f4"
+        },
+        {
+          "path": "stages/s03-review/attempt-2/stage-output.json",
+          "sha256": "4250ea862810ef9f3d1ed960eb26b969a725efe03d7518041ef5ad3dd4d999c0"
+        }
+      ]
+    },
+    "no_gate_bypass": {
+      "details": [
+        "Route, stage, query, and Agent receipt gates are consistent with saved artifacts."
+      ],
+      "passed": true,
+      "sources": [
+        {
+          "path": "run-state.json",
+          "sha256": "0019578cdf3cbe30bcbc4ed4950e6864b0c5d9a8967e92aae6a399aaba75fbda"
+        },
+        {
+          "path": "events.jsonl",
+          "sha256": "90b139d256a34fa3346340a496c04bd71dec2e1eee2c8c54a3ce1ecc6753c713"
+        },
+        {
+          "path": "approvals.jsonl",
+          "sha256": "e3c198ecfef8b8a9b38c87f4604ad96b08b10fa9e5dd4ae4d788706108f5c105"
+        }
+      ]
+    },
+    "recovery_success": {
+      "details": [
+        "No recovery was required, or committed recovery completed without an active lease."
+      ],
+      "passed": true,
+      "sources": [
+        {
+          "path": "events.jsonl",
+          "sha256": "90b139d256a34fa3346340a496c04bd71dec2e1eee2c8c54a3ce1ecc6753c713"
+        },
+        {
+          "path": "run-state.json",
+          "sha256": "0019578cdf3cbe30bcbc4ed4950e6864b0c5d9a8967e92aae6a399aaba75fbda"
+        }
+      ]
+    },
+    "schema_valid": {
+      "details": [
+        "All discovered v1.2 artifacts satisfy their schemas."
+      ],
+      "passed": true,
+      "sources": [
+        {
+          "path": "run-state.json",
+          "sha256": "0019578cdf3cbe30bcbc4ed4950e6864b0c5d9a8967e92aae6a399aaba75fbda"
+        },
+        {
+          "path": "route-plan.json",
+          "sha256": "66abacf95d75ccd81c3af24e5ce48ffdd198c105fee37719fc02fa1e067385cf"
+        },
+        {
+          "path": "approvals.jsonl",
+          "sha256": "e3c198ecfef8b8a9b38c87f4604ad96b08b10fa9e5dd4ae4d788706108f5c105"
+        },
+        {
+          "path": "stages/s01-business/attempt-1/stage-output.json",
+          "sha256": "8cb99856e3c7ab0ce30970d0a45169c52232b403c6c07e49aa9e707c141dee96"
+        },
+        {
+          "path": "stages/s01-business/attempt-1/agent-execution-receipt.json",
+          "sha256": "ace30284ff028795285834eea0ee4e0460712fad88c0693cdd200c0898e962a4"
+        },
+        {
+          "path": "stages/s02-metrics/attempt-3/stage-output.json",
+          "sha256": "8b7fdbc3333df5f268c16bec8ef1ce23702d422cbbd45d9935059f5f362e7db4"
+        },
+        {
+          "path": "stages/s02-metrics/attempt-3/agent-execution-receipt.json",
+          "sha256": "14eeb5ead6116ecafc4c934df4ebbc836b5bd3fd04dd3d8c686faa45f5961723"
+        },
+        {
+          "path": "stages/s03-review/attempt-2/stage-output.json",
+          "sha256": "4250ea862810ef9f3d1ed960eb26b969a725efe03d7518041ef5ad3dd4d999c0"
+        },
+        {
+          "path": "stages/s03-review/attempt-2/agent-execution-receipt.json",
+          "sha256": "cd98bfc23fa53313f07d22f63e3b35eb18eccaf30741a373d5e5c2ac643e6020"
+        },
+        {
+          "path": "lineage/revisions/revision-000019-397b96d81e2132f4/metric-lineage.json",
+          "sha256": "397b96d81e2132f4abcc402122d551844cfb0d8f172cf27651e061aa36818a76"
+        }
+      ]
+    },
+    "sql_safe": {
+      "details": [
+        "All executable SQL passed the AST read-only guard, or SQL was not applicable."
+      ],
+      "passed": true,
+      "sources": []
+    }
+  },
+  "schema_version": "1.2",
+  "token_usage": null
+}
