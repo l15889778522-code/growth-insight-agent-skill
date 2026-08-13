@@ -127,20 +127,31 @@ def test_real_mysql_release_gate(tmp_path: Path) -> None:
     finally:
         readonly_connection.close()
 
-    timeout_sql = prepared_sql("SELECT SLEEP(3) AS delayed", 1)
-    started = time.monotonic()
-    with pytest.raises((pymysql.MySQLError, TimeoutError, OSError)):
-        with adapter.stream_readonly(
-            timeout_sql,
-            1,
-            1,
-            expected_data_source_fingerprint=expected,
-        ) as stream:
-            list(stream.iter_rows())
-    assert time.monotonic() - started < 3
+    lock_connection = direct_connection(admin=True)
+    try:
+        with lock_connection.cursor() as cursor:
+            cursor.execute("LOCK TABLES analytics.ci_values WRITE")
+        timeout_sql = prepared_sql("SELECT COUNT(*) AS row_count FROM ci_values", 1)
+        started = time.monotonic()
+        with pytest.raises((pymysql.MySQLError, TimeoutError, OSError)):
+            with adapter.stream_readonly(
+                timeout_sql,
+                1,
+                1,
+                expected_data_source_fingerprint=expected,
+            ) as stream:
+                list(stream.iter_rows())
+        assert time.monotonic() - started < 3
+    finally:
+        try:
+            with lock_connection.cursor() as cursor:
+                cursor.execute("UNLOCK TABLES")
+        finally:
+            lock_connection.close()
 
     disconnect_sql = prepared_sql(
-        "SELECT CONNECTION_ID() AS connection_id, id, SLEEP(0.01) AS delay_value "
+        "SELECT CONNECTION_ID() AS connection_id, id, "
+        "REPEAT(payload, 250) AS large_payload "
         "FROM ci_values",
         1000,
     )

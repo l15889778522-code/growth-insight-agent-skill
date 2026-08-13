@@ -502,6 +502,21 @@ def _set_mysql_io_timeout(connection: Any, timeout_seconds: float) -> None:
         settimeout(timeout_seconds)
 
 
+def _discard_mysql_unbuffered_result(cursor: Any, connection: Any) -> None:
+    """Detach a PyMySQL streaming result after its connection was aborted."""
+
+    result = getattr(cursor, "_result", None)
+    if result is None:
+        return
+    if hasattr(result, "unbuffered_active"):
+        result.unbuffered_active = False
+    clear_result = getattr(cursor, "_clear_result", None)
+    if callable(clear_result):
+        clear_result()
+    if getattr(connection, "_result", None) is result:
+        connection._result = None
+
+
 class MySQLAdapter:
     db_type = "mysql"
 
@@ -659,12 +674,16 @@ class MySQLAdapter:
                 stream.elapsed_ms = int((time.monotonic() - started) * 1000)
             abort_stream = stream is None or not stream.exhausted
             cleanup_error: Exception | None = None
+            connection_closed = False
             if abort_stream:
                 try:
                     connection.close()
+                    connection_closed = True
                 except Exception as exc:
                     if not failed:
                         cleanup_error = exc
+                if cursor is not None:
+                    _discard_mysql_unbuffered_result(cursor, connection)
             if cursor is not None:
                 close_cursor = getattr(cursor, "close", None)
                 if callable(close_cursor):
@@ -673,11 +692,12 @@ class MySQLAdapter:
                     except Exception as exc:
                         if not failed and cleanup_error is None:
                             cleanup_error = exc
-            try:
-                connection.close()
-            except Exception as exc:
-                if not failed and cleanup_error is None:
-                    cleanup_error = exc
+            if not connection_closed:
+                try:
+                    connection.close()
+                except Exception as exc:
+                    if not failed and cleanup_error is None:
+                        cleanup_error = exc
             if cleanup_error is not None:
                 raise cleanup_error
 

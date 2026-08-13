@@ -398,6 +398,55 @@ def test_csv_write_failure_removes_temp_and_closes_mysql_cursor(monkeypatch, tmp
     assert not list(tmp_path.glob(".result.csv.*.tmp"))
 
 
+def test_aborted_mysql_stream_discards_unbuffered_result(monkeypatch) -> None:
+    result = SimpleNamespace(unbuffered_active=True)
+
+    class AbortCursor(_FakeCursor):
+        def __init__(self, connection):
+            super().__init__(connection)
+            self._result = result
+
+        def _clear_result(self):
+            self._result = None
+
+    class AbortConnection(_FakeConnection):
+        def __init__(self):
+            super().__init__()
+            self._result = result
+            self.close_count = 0
+
+        def cursor(self):
+            cursor = AbortCursor(self)
+            self.cursors.append(cursor)
+            return cursor
+
+        def close(self):
+            self.close_count += 1
+            self.closed = True
+
+    connection = AbortConnection()
+    config = _mysql_config()
+    expected = sha256_json(data_source_descriptor(config, connection=_FakeConnection()))
+
+    import pymysql
+
+    monkeypatch.setattr(pymysql, "connect", lambda **_kwargs: connection)
+    adapter = MySQLAdapter(config)
+    with pytest.raises(RuntimeError, match="abort consumer"):
+        with adapter.stream_readonly(
+            "SELECT 1 AS value LIMIT 1",
+            1,
+            5,
+            expected_data_source_fingerprint=expected,
+        ):
+            raise RuntimeError("abort consumer")
+
+    assert connection.close_count == 1
+    assert connection._result is None
+    assert result.unbuffered_active is False
+    assert connection.cursors and all(cursor.closed for cursor in connection.cursors)
+
+
 class _FakeTlsSocket:
     def cipher(self):
         return ("TLS_AES_256_GCM_SHA384", "TLSv1.3", 256)
