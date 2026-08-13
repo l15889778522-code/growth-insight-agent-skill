@@ -21,8 +21,39 @@
     "run_state_sha256": null,
     "source_type": "external_adapter"
   },
-  "quality_review": null,
-  "quality_scores": null,
+  "quality_review": {
+    "rubric_version": "1.0",
+    "blind_to_mode": true,
+    "reviewer_ids": [
+      "blind-reviewer-01:019ff938-29b3-7080-a6b3-f1f8f2247c86",
+      "blind-reviewer-02:019ff938-2a4f-7733-af09-3b2e108ffd41"
+    ],
+    "scores": {
+      "business_coverage": 0.945,
+      "metric_consistency": 0.955,
+      "route_quality": 0.95,
+      "sql_executability": 1,
+      "evidence_traceability": 0.895
+    },
+    "rationales": {
+      "business_coverage": "Provides a decision-ready KPI contract with the requested D7 metric, activated-user denominator, cohort policy, diagnostics, and measurement gaps, though its four-action activation proposal is unusually strict.",
+      "metric_consistency": "Uses coherent cohort windows and a valid durable-yield decomposition; the combined yield should be the unambiguous decision criterion when activation and retention move in opposite directions.",
+      "route_quality": "Completes the requested framing, metric-design, and consistency work without unnecessary execution stages.",
+      "sql_executability": "Correctly omits SQL and makes no database-execution claim.",
+      "evidence_traceability": "The external evidence bundle is hash-bound and major choices are labeled as assumptions, but claim-level references are absent and the four-action rule and D7 action set lack supplied validation evidence."
+    },
+    "disagreements": [
+      "Evidence traceability was 0.91 versus 0.88: reviewers differed slightly on the penalty for file-level rather than claim-level evidence.",
+      "Business coverage and metric consistency differed by at most 0.03; both reviewers identified the stringent activation rule as the main caveat."
+    ]
+  },
+  "quality_scores": {
+    "business_coverage": 0.945,
+    "metric_consistency": 0.955,
+    "route_quality": 0.95,
+    "sql_executability": 1,
+    "evidence_traceability": 0.895
+  },
   "roles_run": [
     "growth-business",
     "growth-metrics",

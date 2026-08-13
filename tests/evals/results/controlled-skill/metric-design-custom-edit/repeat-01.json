@@ -22,8 +22,41 @@
     "run_state_sha256": "0019578cdf3cbe30bcbc4ed4950e6864b0c5d9a8967e92aae6a399aaba75fbda",
     "source_type": "run_artifacts"
   },
-  "quality_review": null,
-  "quality_scores": null,
+  "quality_review": {
+    "rubric_version": "1.0",
+    "blind_to_mode": true,
+    "reviewer_ids": [
+      "blind-reviewer-01:019ff938-29b3-7080-a6b3-f1f8f2247c86",
+      "blind-reviewer-02:019ff938-2a4f-7733-af09-3b2e108ffd41"
+    ],
+    "scores": {
+      "business_coverage": 0.74,
+      "metric_consistency": 0.88,
+      "route_quality": 0.405,
+      "sql_executability": 1,
+      "evidence_traceability": 0.97
+    },
+    "rationales": {
+      "business_coverage": "Preserves the requested D7 contract and offers a contextual metric portfolio with explicit caveats, but leaves the final activation rule and D7 action set unresolved and is much longer than the requested concise deliverable.",
+      "metric_consistency": "Metric roles, distinct-user denominators, half-open activation windows, D7 calendar boundaries, and candidate lateness policies are largely consistent; recent-cohort eligibility and central business definitions remain incomplete.",
+      "route_quality": "The analytical stages and approvals completed, but the overall workflow did not complete because the terminal route entered a finalizer that required an absent Report stage; the workflow is also heavier than needed for this case.",
+      "sql_executability": "Correctly omits SQL and makes no unsupported execution claim.",
+      "evidence_traceability": "Strongest of the three: 75 structured references resolved to immutable artifacts and schemas, receipts, approvals, lineage, and hash-chain audit passed; version-transition claims still rely on a registered but unapproved baseline."
+    },
+    "disagreements": [
+      "Business coverage was 0.58 versus 0.90: reviewers differed on whether leaving the final activation and D7 action definitions open is a material failure or an acceptable metric-design caveat.",
+      "Metric consistency was 0.81 versus 0.95: reviewers weighted unresolved recent-cohort eligibility and optional metric complexity differently.",
+      "Route quality was 0.36 versus 0.45; both reviewers agreed the incomplete finalizer is a material defect.",
+      "Evidence traceability converged at 0.96 versus 0.98 after the omitted validation facts were supplied."
+    ]
+  },
+  "quality_scores": {
+    "business_coverage": 0.74,
+    "metric_consistency": 0.88,
+    "route_quality": 0.405,
+    "sql_executability": 1,
+    "evidence_traceability": 0.97
+  },
   "roles_run": [
     "growth-business",
     "growth-metrics",

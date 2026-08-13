@@ -1,0 +1,87 @@
+{
+  "rubric_version": "1.0",
+  "blind_to_mode": true,
+  "reviewer_id": "blind-reviewer-02",
+  "candidate_reviews": {
+    "Cobalt": {
+      "scores": {
+        "business_coverage": 0.9,
+        "metric_consistency": 0.95,
+        "route_quality": 0.45,
+        "sql_executability": 1,
+        "evidence_traceability": 0.98
+      },
+      "rationales": {
+        "business_coverage": "Covers the requested KPI portfolio, preserves the activated-user denominator, defines the D7 Asia/Shanghai window, and explicitly handles late cohorts. It is less decision-ready because the final activation and D7 action definitions remain unresolved, and it is substantially longer than the requested concise contract.",
+        "metric_consistency": "Formulas, distinct-user denominators, cohort grains, half-open activation windows, D7 calendar-day boundaries, and metric roles are mutually consistent. The requested D7 metric appears exactly once and retains activated new users as its denominator.",
+        "route_quality": "The analytical stages and approvals produced a usable metric-design contract, but the supplied workflow facts state that the overall workflow did not complete because finalization required an absent stage. The oversized portfolio and review apparatus also exceed the shortest sufficient route.",
+        "sql_executability": "SQL and executable database claims are correctly omitted in this no-access, no-SQL case.",
+        "evidence_traceability": "Traceability is excellent: 75 structured evidence references resolve to registered immutable artifacts, while schemas, receipts, approvals, lineage, and the run hash chain passed deterministic validation. Candidate policies and unresolved dependencies are explicitly labeled. The only material caveat is that some version-transition claims rely on a registered but unapproved prior-attempt artifact."
+      },
+      "issues": [
+        "The successful-registration mapping, final activation rule, and agreed D7 action set remain open, so the core metric cannot yet be calculated.",
+        "Version-transition and no-deletion claims rely partly on a hash-resolvable but unapproved prior-attempt baseline.",
+        "The 48-hour holdback and seven-day restatement period are reasonable proposals but require approval.",
+        "The deliverable is not concise.",
+        "The overall workflow did not complete."
+      ]
+    },
+    "Birch": {
+      "scores": {
+        "business_coverage": 0.97,
+        "metric_consistency": 0.98,
+        "route_quality": 0.97,
+        "sql_executability": 1,
+        "evidence_traceability": 0.9
+      },
+      "rationales": {
+        "business_coverage": "Directly recommends a compact KPI tree, incorporates the requested D7 metric, preserves its activated-user denominator, defines mature cohorts and late-arrival treatment, and explains how the metrics guide onboarding decisions.",
+        "metric_consistency": "The activation rate, retained activation rate, and all-new-user durable-adoption yield use aligned cohorts and windows, making the stated multiplicative identity valid. The D7 interval is precise, zero-denominator behavior is addressed, and diagnostic grains and non-additivity are clear.",
+        "route_quality": "The completed workflow uses the shortest sufficient analytical responsibilities and produces a concise, usable KPI contract without unnecessary execution work.",
+        "sql_executability": "Correctly omits SQL and makes no unsupported claim that the metrics were executed.",
+        "evidence_traceability": "The prompt, answer, host observation, and execution manifest are file-hash bound. Material definitions use only supplied fields, and missing taxonomy or data semantics are disclosed. Traceability falls short of complete because the prose has no claim-level structured references and the action groupings, same-project activation rule, and D7 action set are analytical proposals rather than approved facts, although their provisional status is reasonably clear."
+      },
+      "issues": [
+        "The proposed activation rule and D7 core-action set require stakeholder approval and outcome validation.",
+        "The exact successful-registration event name and event-time normalization remain unspecified.",
+        "The same-project rule depends on reliable non-null project_id values.",
+        "D7 activity remains a point-retention proxy rather than proof of durable team-level adoption.",
+        "There are no claim-level structured evidence references."
+      ]
+    },
+    "Aster": {
+      "scores": {
+        "business_coverage": 0.94,
+        "metric_consistency": 0.94,
+        "route_quality": 0.95,
+        "sql_executability": 1,
+        "evidence_traceability": 0.88
+      },
+      "rationales": {
+        "business_coverage": "Provides a decision-ready KPI contract with the required D7 metric, activated-user denominator, Asia/Shanghai cohort window, late-cohort policy, diagnostics, and measurement caveats. It answers which KPIs to use, although the activation proposal is unusually strict.",
+        "metric_consistency": "The metrics share coherent eligibility and cohort windows, and the durable-yield consistency equation is valid for aligned cohorts. The D7 denominator is correctly limited to activated users. The decision rule is somewhat weaker than Birch's because it does not make combined durable-adoption yield the unambiguous optimization target.",
+        "route_quality": "The completed workflow reaches a concise, usable outcome through only the necessary framing, metric-design, and consistency responsibilities.",
+        "sql_executability": "Correctly omits SQL and avoids claims of database execution.",
+        "evidence_traceability": "The prompt, answer, host observation, and execution manifest are file-hash bound. The response limits dependencies to supplied fields and identifies the activation threshold and lateness buffer as hypotheses or assumptions. It lacks claim-level structured evidence references, and its recommended four-action activation rule and chosen D7 action set have no supplied validation evidence."
+      },
+      "issues": [
+        "Requiring all four actions on one project is a stringent proposed activation threshold with no supplied evidence that it predicts durable adoption.",
+        "The proposed D7 core-action set requires stakeholder agreement.",
+        "The 48-hour finalization buffer is an unvalidated operating assumption.",
+        "The preferred-change rule could be ambiguous when activation and retained activation move in opposite directions; combined durable-adoption yield should be the explicit decision criterion.",
+        "There are no claim-level structured evidence references."
+      ]
+    }
+  },
+  "ranking": [
+    "Birch",
+    "Aster",
+    "Cobalt"
+  ],
+  "uncertainties": [
+    "No candidate can validate which activation rule or D7 core-action set best predicts durable adoption because no behavioral data or approved definition is supplied.",
+    "The successful-registration event mapping, event_time storage semantics, and event-latency SLA are unknown.",
+    "The relative merits of Birch's paired milestone and Aster's four-action milestone cannot be established from the frozen input alone.",
+    "Cobalt's unapproved prior-attempt artifact is verifiable as evidence but does not establish stakeholder approval of the version baseline."
+  ]
+}

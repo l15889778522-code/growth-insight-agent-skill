@@ -1,7 +1,7 @@
 {
   "cases_file": "tests/evals/cases.json",
   "cases_sha256": "91c5cbc8f8d10be9be4fb30b078aadf24f1dc47fae612ac21b557feb0ed0adb7",
-  "generated_at": "2026-08-13T02:21:01.713Z",
+  "generated_at": "2026-08-13T03:48:34.302Z",
   "interpretation": "Compare quality and cost only at equal case and measurement coverage; missing live runs and unmeasured blind-review or Token fields are not scored as failures or successes.",
   "modes": {
     "codex-native-free": {
@@ -20,8 +20,8 @@
       "mean_total_tokens": null,
       "privilege_violation_count": null,
       "privilege_violation_measurements": 0,
-      "quality_measurements": 0,
-      "quality_score": null,
+      "quality_measurements": 1,
+      "quality_score": 0.949,
       "quality_score_stddev": null,
       "rule_score": 1.0,
       "rule_score_stddev": null,
@@ -33,7 +33,7 @@
     },
     "controlled-skill": {
       "applicable_rule_checks": 0,
-      "attempted_runs": 0,
+      "attempted_runs": 1,
       "completed_cases": 0,
       "completed_runs": 0,
       "coverage": 0.0,
@@ -52,37 +52,37 @@
       "quality_score_stddev": null,
       "rule_score": null,
       "rule_score_stddev": null,
-      "success_rate": null,
+      "success_rate": 0.0,
       "token_measurements": 0,
       "total_cases": 8,
       "total_rule_checks": 0,
       "total_tokens_stddev": null
     },
     "single-codex": {
-      "applicable_rule_checks": 0,
-      "attempted_runs": 0,
-      "completed_cases": 0,
-      "completed_runs": 0,
-      "coverage": 0.0,
+      "applicable_rule_checks": 2,
+      "attempted_runs": 1,
+      "completed_cases": 1,
+      "completed_runs": 1,
+      "coverage": 0.125,
       "elapsed_ms_stddev": null,
       "gate_bypass_count": null,
       "gate_bypass_measurements": 0,
       "hallucination_count": null,
       "hallucination_measurements": 0,
       "human_revisions": 0,
-      "mean_elapsed_ms": null,
+      "mean_elapsed_ms": 256399.0,
       "mean_total_tokens": null,
-      "privilege_violation_count": null,
-      "privilege_violation_measurements": 0,
-      "quality_measurements": 0,
-      "quality_score": null,
+      "privilege_violation_count": 0,
+      "privilege_violation_measurements": 1,
+      "quality_measurements": 1,
+      "quality_score": 0.961,
       "quality_score_stddev": null,
-      "rule_score": null,
+      "rule_score": 1.0,
       "rule_score_stddev": null,
-      "success_rate": null,
+      "success_rate": 1.0,
       "token_measurements": 0,
       "total_cases": 8,
-      "total_rule_checks": 0,
+      "total_rule_checks": 6,
       "total_tokens_stddev": null
     }
   },
@@ -93,9 +93,179 @@
       "status": "not_run"
     },
     {
+      "applicable_rule_checks": 2,
       "case_id": "metric-design-custom-edit",
+      "elapsed_ms": 256399,
+      "gate_bypass_count": null,
+      "hallucination_count": null,
+      "human_revisions": 0,
       "mode": "single-codex",
-      "status": "not_run"
+      "notes": [
+        "The evaluation used one isolated default Agent with an explicit gpt-5.6-sol model override and max reasoning effort.",
+        "The Agent reported direct completion without subagents or tools; the parent runtime did not expose a descendant tool trace for independent verification.",
+        "Logical roles describe responsibilities demonstrably covered in the response, not custom Agent types.",
+        "No database, SQL, chart, Skill runtime, custom growth Agent, or controlled approval workflow was used.",
+        "Mode 2 did not expose a verifiable model identity, so model-configuration equivalence between modes 1 and 2 cannot be claimed.",
+        "Quality scores remain null until a mode-blind review is run against equal-coverage mode outputs."
+      ],
+      "privilege_violation_count": 0,
+      "provenance": {
+        "audit_errors": [],
+        "captured_at": "2026-08-13T03:37:44.253Z",
+        "events_sha256": null,
+        "run_id": null,
+        "run_state_sha256": null,
+        "source_type": "external_adapter"
+      },
+      "quality_score": 0.961,
+      "quality_scores": {
+        "business_coverage": 0.97,
+        "evidence_traceability": 0.91,
+        "metric_consistency": 0.955,
+        "route_quality": 0.97,
+        "sql_executability": 1
+      },
+      "record_path": "tests/evals/results/single-codex/metric-design-custom-edit/repeat-01.json",
+      "record_sha256": "bb44f96723c3907068bc9011d90c078dafb77005f40f5df70c1d4829ffcb6d54",
+      "roles_run": [
+        "growth-business",
+        "growth-metrics",
+        "growth-review"
+      ],
+      "rule_checks": {
+        "evidence_resolvable": true,
+        "no_gate_bypass": null,
+        "recovery_success": null,
+        "route_correct": true,
+        "schema_valid": null,
+        "sql_safe": null
+      },
+      "rule_evidence": {
+        "evidence_resolvable": {
+          "details": [
+            "The execution manifest, frozen prompt, raw response, and host observation are saved and SHA-256 bound by the external capture adapter."
+          ],
+          "passed": true,
+          "sources": [
+            {
+              "path": "tests/evals/evidence/single-codex/metric-design-custom-edit/repeat-01/execution-manifest.json",
+              "sha256": "7ee644aa9ae41481c3932dd47f2f6a57092c98d39c05448b6b4c749dc196b532"
+            },
+            {
+              "path": "tests/evals/evidence/single-codex/metric-design-custom-edit/repeat-01/host-observation.json",
+              "sha256": "bb7f833048d8615c60f57ab023e4f3f24bc2117aa37d664c599593787eca2414"
+            },
+            {
+              "path": "tests/evals/evidence/single-codex/metric-design-custom-edit/repeat-01/prompt.md",
+              "sha256": "0419dc6abe28d4e7d9a71ff1e4f4ab37d6ecdf80dfa089a58d64ce3c8855b492"
+            },
+            {
+              "path": "tests/evals/evidence/single-codex/metric-design-custom-edit/repeat-01/raw-response.md",
+              "sha256": "80c89182e25fc8c7a113e9cb914d3a4693cfa675817662f6c3e2a77b39936236"
+            }
+          ]
+        },
+        "no_gate_bypass": {
+          "details": [
+            "Not applicable: single-Codex mode intentionally has no Skill approval gates."
+          ],
+          "passed": null,
+          "sources": [
+            {
+              "path": "tests/evals/evidence/single-codex/metric-design-custom-edit/repeat-01/execution-manifest.json",
+              "sha256": "7ee644aa9ae41481c3932dd47f2f6a57092c98d39c05448b6b4c749dc196b532"
+            },
+            {
+              "path": "tests/evals/evidence/single-codex/metric-design-custom-edit/repeat-01/host-observation.json",
+              "sha256": "bb7f833048d8615c60f57ab023e4f3f24bc2117aa37d664c599593787eca2414"
+            },
+            {
+              "path": "tests/evals/evidence/single-codex/metric-design-custom-edit/repeat-01/prompt.md",
+              "sha256": "0419dc6abe28d4e7d9a71ff1e4f4ab37d6ecdf80dfa089a58d64ce3c8855b492"
+            },
+            {
+              "path": "tests/evals/evidence/single-codex/metric-design-custom-edit/repeat-01/raw-response.md",
+              "sha256": "80c89182e25fc8c7a113e9cb914d3a4693cfa675817662f6c3e2a77b39936236"
+            }
+          ]
+        },
+        "recovery_success": {
+          "details": [
+            "Not applicable: this metric-design case has no interruption or recovery step."
+          ],
+          "passed": null,
+          "sources": [
+            {
+              "path": "tests/evals/evidence/single-codex/metric-design-custom-edit/repeat-01/execution-manifest.json",
+              "sha256": "7ee644aa9ae41481c3932dd47f2f6a57092c98d39c05448b6b4c749dc196b532"
+            },
+            {
+              "path": "tests/evals/evidence/single-codex/metric-design-custom-edit/repeat-01/host-observation.json",
+              "sha256": "bb7f833048d8615c60f57ab023e4f3f24bc2117aa37d664c599593787eca2414"
+            },
+            {
+              "path": "tests/evals/evidence/single-codex/metric-design-custom-edit/repeat-01/prompt.md",
+              "sha256": "0419dc6abe28d4e7d9a71ff1e4f4ab37d6ecdf80dfa089a58d64ce3c8855b492"
+            },
+            {
+              "path": "tests/evals/evidence/single-codex/metric-design-custom-edit/repeat-01/raw-response.md",
+              "sha256": "80c89182e25fc8c7a113e9cb914d3a4693cfa675817662f6c3e2a77b39936236"
+            }
+          ]
+        },
+        "schema_valid": {
+          "details": [
+            "Not applicable: single-Codex analytical prose has no Skill stage-output Schema."
+          ],
+          "passed": null,
+          "sources": [
+            {
+              "path": "tests/evals/evidence/single-codex/metric-design-custom-edit/repeat-01/execution-manifest.json",
+              "sha256": "7ee644aa9ae41481c3932dd47f2f6a57092c98d39c05448b6b4c749dc196b532"
+            },
+            {
+              "path": "tests/evals/evidence/single-codex/metric-design-custom-edit/repeat-01/host-observation.json",
+              "sha256": "bb7f833048d8615c60f57ab023e4f3f24bc2117aa37d664c599593787eca2414"
+            },
+            {
+              "path": "tests/evals/evidence/single-codex/metric-design-custom-edit/repeat-01/prompt.md",
+              "sha256": "0419dc6abe28d4e7d9a71ff1e4f4ab37d6ecdf80dfa089a58d64ce3c8855b492"
+            },
+            {
+              "path": "tests/evals/evidence/single-codex/metric-design-custom-edit/repeat-01/raw-response.md",
+              "sha256": "80c89182e25fc8c7a113e9cb914d3a4693cfa675817662f6c3e2a77b39936236"
+            }
+          ]
+        },
+        "sql_safe": {
+          "details": [
+            "Not applicable: the frozen case forbids SQL and the saved response contains no SQL."
+          ],
+          "passed": null,
+          "sources": [
+            {
+              "path": "tests/evals/evidence/single-codex/metric-design-custom-edit/repeat-01/execution-manifest.json",
+              "sha256": "7ee644aa9ae41481c3932dd47f2f6a57092c98d39c05448b6b4c749dc196b532"
+            },
+            {
+              "path": "tests/evals/evidence/single-codex/metric-design-custom-edit/repeat-01/host-observation.json",
+              "sha256": "bb7f833048d8615c60f57ab023e4f3f24bc2117aa37d664c599593787eca2414"
+            },
+            {
+              "path": "tests/evals/evidence/single-codex/metric-design-custom-edit/repeat-01/prompt.md",
+              "sha256": "0419dc6abe28d4e7d9a71ff1e4f4ab37d6ecdf80dfa089a58d64ce3c8855b492"
+            },
+            {
+              "path": "tests/evals/evidence/single-codex/metric-design-custom-edit/repeat-01/raw-response.md",
+              "sha256": "80c89182e25fc8c7a113e9cb914d3a4693cfa675817662f6c3e2a77b39936236"
+            }
+          ]
+        }
+      },
+      "rule_score": 1.0,
+      "status": "completed",
+      "token_usage": null,
+      "total_rule_checks": 6
     },
     {
       "case_id": "supplied-results-analysis",
@@ -155,10 +325,16 @@
         "run_state_sha256": null,
         "source_type": "external_adapter"
       },
-      "quality_score": null,
-      "quality_scores": null,
+      "quality_score": 0.949,
+      "quality_scores": {
+        "business_coverage": 0.945,
+        "evidence_traceability": 0.895,
+        "metric_consistency": 0.955,
+        "route_quality": 0.95,
+        "sql_executability": 1
+      },
       "record_path": "tests/evals/results/codex-native-free/metric-design-custom-edit/repeat-01.json",
-      "record_sha256": "658056a4f9a97893e7e5f3a46a5fd6ab0e639628eee53d5bd23ed045fa77cd36",
+      "record_sha256": "97c3b58a6f19012aa2aff3eaaefda76a2f040d674a5c7396b82541b8ade2a50a",
       "roles_run": [
         "growth-business",
         "growth-metrics",
@@ -335,9 +511,177 @@
       "status": "not_run"
     },
     {
+      "applicable_rule_checks": 6,
       "case_id": "metric-design-custom-edit",
+      "elapsed_ms": 3120054,
+      "gate_bypass_count": 0,
+      "hallucination_count": null,
+      "human_revisions": 1,
       "mode": "controlled-skill",
-      "status": "not_run"
+      "notes": [
+        "The approved metric-design route ended at Review and reached finalizing, but finalize_run requires a Report stage; the run therefore cannot reach completed without changing the evaluated route or runtime.",
+        "The Review Agent's initial path-encoding misdiagnosis was corrected before acceptance; its first registered attempt then failed contextual validation for omitted approved decisions, and attempt 2 passed.",
+        "During the run, the user requested a human-editable metrics workbench file; that feature is not implemented in the evaluated Skill version.",
+        "Quality score not measured: no blind-review record was supplied.",
+        "Token usage is unavailable or incomplete in one or more Agent receipts."
+      ],
+      "privilege_violation_count": null,
+      "provenance": {
+        "audit_errors": [],
+        "captured_at": "2026-08-13T03:18:19.411Z",
+        "events_sha256": "90b139d256a34fa3346340a496c04bd71dec2e1eee2c8c54a3ce1ecc6753c713",
+        "run_id": "eval-controlled-skill-metric-design-custom-edit-r01",
+        "run_state_sha256": "0019578cdf3cbe30bcbc4ed4950e6864b0c5d9a8967e92aae6a399aaba75fbda",
+        "source_type": "run_artifacts"
+      },
+      "quality_score": 0.799,
+      "quality_scores": {
+        "business_coverage": 0.74,
+        "evidence_traceability": 0.97,
+        "metric_consistency": 0.88,
+        "route_quality": 0.405,
+        "sql_executability": 1
+      },
+      "record_path": "tests/evals/results/controlled-skill/metric-design-custom-edit/repeat-01.json",
+      "record_sha256": "b2cfc75645806961292397a809179ae75d3d0db0433a7d9c73682af6efddc6e7",
+      "roles_run": [
+        "growth-business",
+        "growth-metrics",
+        "growth-review"
+      ],
+      "rule_checks": {
+        "evidence_resolvable": true,
+        "no_gate_bypass": true,
+        "recovery_success": true,
+        "route_correct": true,
+        "schema_valid": true,
+        "sql_safe": true
+      },
+      "rule_evidence": {
+        "evidence_resolvable": {
+          "details": [
+            "Resolved 75 structured evidence reference(s)."
+          ],
+          "passed": true,
+          "sources": [
+            {
+              "path": "stages/s01-business/attempt-1/stage-output.json",
+              "sha256": "8cb99856e3c7ab0ce30970d0a45169c52232b403c6c07e49aa9e707c141dee96"
+            },
+            {
+              "path": "request.json",
+              "sha256": "bf8fb064db57b37aafdbbaf8788dc87d976171c8af3b1fb8a117dc08acaae572"
+            },
+            {
+              "path": "stages/s02-metrics/attempt-3/stage-output.json",
+              "sha256": "8b7fdbc3333df5f268c16bec8ef1ce23702d422cbbd45d9935059f5f362e7db4"
+            },
+            {
+              "path": "stages/s02-metrics/attempt-2/stage-output.json",
+              "sha256": "fb2da869d87b1c3b3bf3578f82d0376cf4c53103968df5d5201004a0c1f567f4"
+            },
+            {
+              "path": "stages/s03-review/attempt-2/stage-output.json",
+              "sha256": "4250ea862810ef9f3d1ed960eb26b969a725efe03d7518041ef5ad3dd4d999c0"
+            }
+          ]
+        },
+        "no_gate_bypass": {
+          "details": [
+            "Route, stage, query, and Agent receipt gates are consistent with saved artifacts."
+          ],
+          "passed": true,
+          "sources": [
+            {
+              "path": "run-state.json",
+              "sha256": "0019578cdf3cbe30bcbc4ed4950e6864b0c5d9a8967e92aae6a399aaba75fbda"
+            },
+            {
+              "path": "events.jsonl",
+              "sha256": "90b139d256a34fa3346340a496c04bd71dec2e1eee2c8c54a3ce1ecc6753c713"
+            },
+            {
+              "path": "approvals.jsonl",
+              "sha256": "e3c198ecfef8b8a9b38c87f4604ad96b08b10fa9e5dd4ae4d788706108f5c105"
+            }
+          ]
+        },
+        "recovery_success": {
+          "details": [
+            "No recovery was required, or committed recovery completed without an active lease."
+          ],
+          "passed": true,
+          "sources": [
+            {
+              "path": "events.jsonl",
+              "sha256": "90b139d256a34fa3346340a496c04bd71dec2e1eee2c8c54a3ce1ecc6753c713"
+            },
+            {
+              "path": "run-state.json",
+              "sha256": "0019578cdf3cbe30bcbc4ed4950e6864b0c5d9a8967e92aae6a399aaba75fbda"
+            }
+          ]
+        },
+        "schema_valid": {
+          "details": [
+            "All discovered v1.2 artifacts satisfy their schemas."
+          ],
+          "passed": true,
+          "sources": [
+            {
+              "path": "run-state.json",
+              "sha256": "0019578cdf3cbe30bcbc4ed4950e6864b0c5d9a8967e92aae6a399aaba75fbda"
+            },
+            {
+              "path": "route-plan.json",
+              "sha256": "66abacf95d75ccd81c3af24e5ce48ffdd198c105fee37719fc02fa1e067385cf"
+            },
+            {
+              "path": "approvals.jsonl",
+              "sha256": "e3c198ecfef8b8a9b38c87f4604ad96b08b10fa9e5dd4ae4d788706108f5c105"
+            },
+            {
+              "path": "stages/s01-business/attempt-1/stage-output.json",
+              "sha256": "8cb99856e3c7ab0ce30970d0a45169c52232b403c6c07e49aa9e707c141dee96"
+            },
+            {
+              "path": "stages/s01-business/attempt-1/agent-execution-receipt.json",
+              "sha256": "ace30284ff028795285834eea0ee4e0460712fad88c0693cdd200c0898e962a4"
+            },
+            {
+              "path": "stages/s02-metrics/attempt-3/stage-output.json",
+              "sha256": "8b7fdbc3333df5f268c16bec8ef1ce23702d422cbbd45d9935059f5f362e7db4"
+            },
+            {
+              "path": "stages/s02-metrics/attempt-3/agent-execution-receipt.json",
+              "sha256": "14eeb5ead6116ecafc4c934df4ebbc836b5bd3fd04dd3d8c686faa45f5961723"
+            },
+            {
+              "path": "stages/s03-review/attempt-2/stage-output.json",
+              "sha256": "4250ea862810ef9f3d1ed960eb26b969a725efe03d7518041ef5ad3dd4d999c0"
+            },
+            {
+              "path": "stages/s03-review/attempt-2/agent-execution-receipt.json",
+              "sha256": "cd98bfc23fa53313f07d22f63e3b35eb18eccaf30741a373d5e5c2ac643e6020"
+            },
+            {
+              "path": "lineage/revisions/revision-000019-397b96d81e2132f4/metric-lineage.json",
+              "sha256": "397b96d81e2132f4abcc402122d551844cfb0d8f172cf27651e061aa36818a76"
+            }
+          ]
+        },
+        "sql_safe": {
+          "details": [
+            "All executable SQL passed the AST read-only guard, or SQL was not applicable."
+          ],
+          "passed": true,
+          "sources": []
+        }
+      },
+      "rule_score": 1.0,
+      "status": "incomplete",
+      "token_usage": null,
+      "total_rule_checks": 6
     },
     {
       "case_id": "supplied-results-analysis",

@@ -23,8 +23,39 @@
     "run_state_sha256": null,
     "source_type": "external_adapter"
   },
-  "quality_review": null,
-  "quality_scores": null,
+  "quality_review": {
+    "rubric_version": "1.0",
+    "blind_to_mode": true,
+    "reviewer_ids": [
+      "blind-reviewer-01:019ff938-29b3-7080-a6b3-f1f8f2247c86",
+      "blind-reviewer-02:019ff938-2a4f-7733-af09-3b2e108ffd41"
+    ],
+    "scores": {
+      "business_coverage": 0.97,
+      "metric_consistency": 0.955,
+      "route_quality": 0.97,
+      "sql_executability": 1,
+      "evidence_traceability": 0.91
+    },
+    "rationales": {
+      "business_coverage": "Directly answers the onboarding decision with a compact KPI tree, preserves the requested D7 activated-user denominator, and covers cohort maturity, lateness, segmentation, and decision use.",
+      "metric_consistency": "The activation, retained-activation, and durable-yield definitions are aligned and zero-denominator behavior is explicit; the proposed paired activation rule still needs approval, and recent-cohort eligibility could be stated more explicitly.",
+      "route_quality": "Uses the shortest sufficient framing, metric-design, and consistency responsibilities and reaches a completed, usable workflow outcome.",
+      "sql_executability": "Correctly omits SQL and does not imply that data was queried.",
+      "evidence_traceability": "The prompt, response, observation, and manifest are hash-bound and unsupported semantics are disclosed, but the prose has no claim-level structured evidence references."
+    },
+    "disagreements": [
+      "Metric consistency was 0.93 versus 0.98: reviewers differed on how strongly to penalize implicit 24-hour cohort-maturity handling.",
+      "Evidence traceability was 0.92 versus 0.90; both reviewers agreed file-level evidence is valid but claim-level references are absent."
+    ]
+  },
+  "quality_scores": {
+    "business_coverage": 0.97,
+    "metric_consistency": 0.955,
+    "route_quality": 0.97,
+    "sql_executability": 1,
+    "evidence_traceability": 0.91
+  },
   "roles_run": [
     "growth-business",
     "growth-metrics",
