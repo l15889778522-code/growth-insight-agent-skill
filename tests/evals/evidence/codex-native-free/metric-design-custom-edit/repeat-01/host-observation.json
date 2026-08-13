@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0",
+  "mode": "codex-native-free",
+  "case_id": "metric-design-custom-edit",
+  "repeat": 1,
+  "root_agent_id": "019ff8da-df8b-79c2-bb28-0131e79d7b85",
+  "root_agent_nickname": "Linnaeus",
+  "started_at": "2026-08-13T02:02:01.475Z",
+  "finished_at": "2026-08-13T02:06:23.877Z",
+  "elapsed_ms": 262402,
+  "status": "completed",
+  "reported_descendant_agents": [],
+  "descendant_trace_source": "root Agent final response; parent runtime did not expose a descendant tool trace",
+  "model": null,
+  "token_usage": null,
+  "missing_runtime_metadata": [
+    "model",
+    "input_tokens",
+    "output_tokens",
+    "total_tokens"
+  ]
+}

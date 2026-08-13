@@ -1,0 +1,162 @@
+{
+  "case_id": "metric-design-custom-edit",
+  "completed": true,
+  "elapsed_ms": 262402,
+  "gate_bypass_count": null,
+  "hallucination_count": null,
+  "human_revisions": 0,
+  "mode": "codex-native-free",
+  "notes": [
+    "The evaluation root reported direct completion without descendant subagents; the parent runtime did not expose a descendant tool trace for independent verification.",
+    "Logical roles describe responsibilities performed, not custom Agent types.",
+    "No database, SQL, chart, Skill runtime, custom growth Agent, or controlled approval workflow was used.",
+    "Quality scores remain null until a mode-blind review is run against equal-coverage mode outputs."
+  ],
+  "privilege_violation_count": null,
+  "provenance": {
+    "audit_errors": [],
+    "captured_at": "2026-08-13T02:20:56.863Z",
+    "events_sha256": null,
+    "run_id": null,
+    "run_state_sha256": null,
+    "source_type": "external_adapter"
+  },
+  "quality_review": null,
+  "quality_scores": null,
+  "roles_run": [
+    "growth-business",
+    "growth-metrics",
+    "growth-review"
+  ],
+  "rule_checks": {
+    "evidence_resolvable": true,
+    "no_gate_bypass": null,
+    "recovery_success": null,
+    "schema_valid": null,
+    "sql_safe": null
+  },
+  "rule_evidence": {
+    "evidence_resolvable": {
+      "details": [
+        "The execution manifest, frozen prompt, raw response, and host observation are saved and SHA-256 bound by the external capture adapter."
+      ],
+      "passed": true,
+      "sources": [
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/execution-manifest.json",
+          "sha256": "decd9ee5e9ffa425603ef87b1aeca646ed14d9c0bdad92316ded02645c3766f1"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/host-observation.json",
+          "sha256": "514faf0c249f11c055cb3a2472fe37a1dbef994103d289780bdf11e63b0bd8b9"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/prompt.md",
+          "sha256": "ec2d429d7aeed4d925ac07b28719229f962bdbb943c59237789595160be288df"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/raw-response.md",
+          "sha256": "9785dbfcd8b932586920ee1d777a071809bbf20b605184e898677c6169912299"
+        }
+      ]
+    },
+    "no_gate_bypass": {
+      "details": [
+        "Not applicable: native-free mode intentionally has no Skill approval gates."
+      ],
+      "passed": null,
+      "sources": [
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/execution-manifest.json",
+          "sha256": "decd9ee5e9ffa425603ef87b1aeca646ed14d9c0bdad92316ded02645c3766f1"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/host-observation.json",
+          "sha256": "514faf0c249f11c055cb3a2472fe37a1dbef994103d289780bdf11e63b0bd8b9"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/prompt.md",
+          "sha256": "ec2d429d7aeed4d925ac07b28719229f962bdbb943c59237789595160be288df"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/raw-response.md",
+          "sha256": "9785dbfcd8b932586920ee1d777a071809bbf20b605184e898677c6169912299"
+        }
+      ]
+    },
+    "recovery_success": {
+      "details": [
+        "Not applicable: this metric-design case has no interruption or recovery step."
+      ],
+      "passed": null,
+      "sources": [
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/execution-manifest.json",
+          "sha256": "decd9ee5e9ffa425603ef87b1aeca646ed14d9c0bdad92316ded02645c3766f1"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/host-observation.json",
+          "sha256": "514faf0c249f11c055cb3a2472fe37a1dbef994103d289780bdf11e63b0bd8b9"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/prompt.md",
+          "sha256": "ec2d429d7aeed4d925ac07b28719229f962bdbb943c59237789595160be288df"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/raw-response.md",
+          "sha256": "9785dbfcd8b932586920ee1d777a071809bbf20b605184e898677c6169912299"
+        }
+      ]
+    },
+    "schema_valid": {
+      "details": [
+        "Not applicable: native-free analytical prose has no Skill stage-output Schema."
+      ],
+      "passed": null,
+      "sources": [
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/execution-manifest.json",
+          "sha256": "decd9ee5e9ffa425603ef87b1aeca646ed14d9c0bdad92316ded02645c3766f1"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/host-observation.json",
+          "sha256": "514faf0c249f11c055cb3a2472fe37a1dbef994103d289780bdf11e63b0bd8b9"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/prompt.md",
+          "sha256": "ec2d429d7aeed4d925ac07b28719229f962bdbb943c59237789595160be288df"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/raw-response.md",
+          "sha256": "9785dbfcd8b932586920ee1d777a071809bbf20b605184e898677c6169912299"
+        }
+      ]
+    },
+    "sql_safe": {
+      "details": [
+        "Not applicable: the frozen case forbids SQL and the saved response contains no SQL."
+      ],
+      "passed": null,
+      "sources": [
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/execution-manifest.json",
+          "sha256": "decd9ee5e9ffa425603ef87b1aeca646ed14d9c0bdad92316ded02645c3766f1"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/host-observation.json",
+          "sha256": "514faf0c249f11c055cb3a2472fe37a1dbef994103d289780bdf11e63b0bd8b9"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/prompt.md",
+          "sha256": "ec2d429d7aeed4d925ac07b28719229f962bdbb943c59237789595160be288df"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/raw-response.md",
+          "sha256": "9785dbfcd8b932586920ee1d777a071809bbf20b605184e898677c6169912299"
+        }
+      ]
+    }
+  },
+  "schema_version": "1.2",
+  "token_usage": null
+}

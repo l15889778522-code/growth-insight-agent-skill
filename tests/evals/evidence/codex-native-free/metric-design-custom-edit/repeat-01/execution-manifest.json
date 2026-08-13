@@ -1,0 +1,46 @@
+{
+  "case_id": "metric-design-custom-edit",
+  "mode": "codex-native-free",
+  "completed": true,
+  "roles_run": [
+    "growth-business",
+    "growth-metrics",
+    "growth-review"
+  ],
+  "rule_checks": {
+    "sql_safe": null,
+    "schema_valid": null,
+    "evidence_resolvable": true,
+    "no_gate_bypass": null,
+    "recovery_success": null
+  },
+  "rule_details": {
+    "sql_safe": [
+      "Not applicable: the frozen case forbids SQL and the saved response contains no SQL."
+    ],
+    "schema_valid": [
+      "Not applicable: native-free analytical prose has no Skill stage-output Schema."
+    ],
+    "evidence_resolvable": [
+      "The execution manifest, frozen prompt, raw response, and host observation are saved and SHA-256 bound by the external capture adapter."
+    ],
+    "no_gate_bypass": [
+      "Not applicable: native-free mode intentionally has no Skill approval gates."
+    ],
+    "recovery_success": [
+      "Not applicable: this metric-design case has no interruption or recovery step."
+    ]
+  },
+  "hallucination_count": null,
+  "privilege_violation_count": null,
+  "gate_bypass_count": null,
+  "human_revisions": 0,
+  "elapsed_ms": 262402,
+  "token_usage": null,
+  "notes": [
+    "The evaluation root reported direct completion without descendant subagents; the parent runtime did not expose a descendant tool trace for independent verification.",
+    "Logical roles describe responsibilities performed, not custom Agent types.",
+    "No database, SQL, chart, Skill runtime, custom growth Agent, or controlled approval workflow was used.",
+    "Quality scores remain null until a mode-blind review is run against equal-coverage mode outputs."
+  ]
+}

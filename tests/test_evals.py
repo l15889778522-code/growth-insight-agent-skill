@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from capture_external_eval_record import capture as capture_external
 from capture_eval_record import derive_record
 from conftest import ROOT, approve_pending, materialize_stage, stage_output, write_json
 from run_evals import evaluate, render_markdown
@@ -35,7 +36,7 @@ def evaluation_record(*, elapsed_ms: int = 1200, quality: bool = False) -> dict[
     return {
         "schema_version": "1.2",
         "case_id": "full-diagnosis-sqlite",
-        "mode": "v1.2",
+        "mode": "controlled-skill",
         "completed": True,
         "roles_run": [
             "growth-business",
@@ -79,28 +80,38 @@ def evaluation_record(*, elapsed_ms: int = 1200, quality: bool = False) -> dict[
 
 def test_evaluation_keeps_missing_and_unmeasured_values_unscored(tmp_path: Path) -> None:
     results = tmp_path / "results"
-    write_json(results / "v1.2" / "full-diagnosis-sqlite" / "repeat-01.json", evaluation_record())
+    write_json(results / "controlled-skill" / "full-diagnosis-sqlite" / "repeat-01.json", evaluation_record())
     result = evaluate(ROOT / "tests" / "evals" / "cases.json", results)
-    current = result["modes"]["v1.2"]
+    current = result["modes"]["controlled-skill"]
     assert current["completed_cases"] == 1
     assert current["completed_runs"] == 1
     assert current["rule_score"] == 1.0
+    assert current["applicable_rule_checks"] == 6
     assert current["quality_score"] is None
     assert current["hallucination_count"] is None
     assert result["modes"]["single-codex"]["rule_score"] is None
-    assert result["modes"]["v1.0"]["coverage"] == 0
+    assert result["modes"]["codex-native-free"]["coverage"] == 0
     markdown = render_markdown(result)
     assert "N/A" in markdown
+    assert "Applicable rules" in markdown
     assert "missing live runs and unmeasured" in markdown
+
+
+def test_checked_in_aggregate_paths_are_portable() -> None:
+    result = evaluate(ROOT / "tests" / "evals" / "cases.json", ROOT / "tests" / "evals" / "results")
+    completed = next(item for item in result["records"] if item["status"] == "completed")
+    assert result["cases_file"] == "tests/evals/cases.json"
+    assert result["results_root"] == "tests/evals/results"
+    assert completed["record_path"].startswith("tests/evals/results/")
 
 
 def test_evaluation_reports_repeat_variation_and_measurement_counts(tmp_path: Path) -> None:
     results = tmp_path / "results"
-    root = results / "v1.2" / "full-diagnosis-sqlite"
+    root = results / "controlled-skill" / "full-diagnosis-sqlite"
     write_json(root / "repeat-01.json", evaluation_record(elapsed_ms=1000, quality=True))
     write_json(root / "repeat-02.json", evaluation_record(elapsed_ms=1400, quality=True))
     result = evaluate(ROOT / "tests" / "evals" / "cases.json", results)
-    current = result["modes"]["v1.2"]
+    current = result["modes"]["controlled-skill"]
     assert current["completed_cases"] == 1
     assert current["completed_runs"] == 2
     assert current["quality_measurements"] == 2
@@ -112,9 +123,49 @@ def test_evaluation_rejects_self_inconsistent_rule_evidence(tmp_path: Path) -> N
     results = tmp_path / "results"
     record = evaluation_record()
     record["rule_evidence"]["sql_safe"]["passed"] = False
-    write_json(results / "v1.2" / "full-diagnosis-sqlite.json", record)
+    write_json(results / "controlled-skill" / "full-diagnosis-sqlite.json", record)
     with pytest.raises(ValueError, match="rule evidence disagrees"):
         evaluate(ROOT / "tests" / "evals" / "cases.json", results)
+
+
+def test_external_capture_hashes_saved_evidence(tmp_path: Path) -> None:
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    (evidence / "raw-response.md").write_text("Saved native-free response.\n", encoding="utf-8")
+    manifest = write_json(
+        evidence / "execution-manifest.json",
+        {
+            "case_id": "metric-design-custom-edit",
+            "mode": "codex-native-free",
+            "completed": True,
+            "roles_run": ["growth-business", "growth-metrics", "growth-review"],
+            "rule_checks": {
+                "sql_safe": None,
+                "schema_valid": None,
+                "evidence_resolvable": True,
+                "no_gate_bypass": None,
+                "recovery_success": None,
+            },
+            "elapsed_ms": 100,
+            "notes": ["External capture test."],
+        },
+    )
+    record = capture_external(manifest, evidence)
+    assert record["mode"] == "codex-native-free"
+    assert record["rule_checks"]["sql_safe"] is None
+    assert record["gate_bypass_count"] is None
+    assert record["provenance"]["source_type"] == "external_adapter"
+    sources = record["rule_evidence"]["schema_valid"]["sources"]
+    assert any(source["path"].endswith("raw-response.md") for source in sources)
+
+
+def test_external_capture_uses_portable_paths_for_repository_evidence() -> None:
+    evidence = ROOT / "tests" / "evals" / "evidence" / "codex-native-free" / "metric-design-custom-edit" / "repeat-01"
+    record = capture_external(evidence / "execution-manifest.json", evidence)
+    sources = record["rule_evidence"]["evidence_resolvable"]["sources"]
+    assert sources
+    assert all(source["path"].startswith("tests/evals/evidence/") for source in sources)
+    assert any(source["path"].endswith("execution-manifest.json") for source in sources)
 
 
 def test_capture_derives_rule_checks_from_saved_run(approved_run, tmp_path: Path) -> None:
