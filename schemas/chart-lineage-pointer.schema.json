@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.multi-agent-data-analysis/schemas/chart-lineage-pointer.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "pointer_type", "revision", "target_path", "target_sha256", "content_identity"],
+  "properties": {
+    "schema_version": {"const": "1.2"},
+    "pointer_type": {"enum": ["chart_render", "metric_lineage"]},
+    "revision": {"type": "integer", "minimum": 1},
+    "target_path": {"type": "string", "minLength": 1},
+    "target_sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
+    "content_identity": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"}
+  }
+}

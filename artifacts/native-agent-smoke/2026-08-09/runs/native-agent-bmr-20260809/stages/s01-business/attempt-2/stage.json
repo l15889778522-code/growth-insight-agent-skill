@@ -1,0 +1,82 @@
+{
+  "agent_contract_version": "1.2",
+  "assumptions": [
+    "账户是本次分析与决策的业务对象。",
+    "创建日期、人群边界及后续时间窗口均按 Asia/Shanghai 解释。",
+    "signup_cohort_day 和 plan 是用户要求的业务切分维度。",
+    "首次激活、core_action 和第 7 天窗口的精确定义由后续 Metrics 阶段基于业务输入形成契约，本阶段不作最终定义。",
+    "现有 schema 仅代表可供后续契约映射检查的字段清单，不代表数据库可访问或字段值已被观察。"
+  ],
+  "attempt": 2,
+  "calculations": [],
+  "confirmed_decisions": [
+    "业务决策保持不变：决定下一季度 onboarding 优化应优先提升首次激活还是激活后的七日留存。",
+    "分析人群为 2026-07-01 至 2026-07-31 创建的非测试账户。",
+    "分析时区为 Asia/Shanghai。",
+    "用户指定的 seven_day_retained_activation_rate 必须纳入后续指标契约设计。",
+    "本次仅设计和复核指标，不生成或执行 SQL。"
+  ],
+  "conflicts": [],
+  "data_artifacts": [],
+  "evidence": [],
+  "facts": [],
+  "hypotheses": [],
+  "lineage": [],
+  "metrics": [],
+  "open_questions": [
+    "哪些事件或事件组合构成首次激活？",
+    "event_name 中哪些取值属于 core_action？",
+    "“第 7 天”应解释为首次激活后的第七个自然日、固定 24 小时窗口，还是包含容差的观察窗口？",
+    "比较首次激活与七日留存时采用什么决策准则，例如绝对提升空间、业务价值、样本覆盖或目标差距？",
+    "plan 应使用账户创建时、首次激活时还是观察窗口内的计划值？"
+  ],
+  "recommended_next_stage": "growth-metrics",
+  "required_next_inputs": [
+    "首次激活的业务定义及其合格事件或事件组合",
+    "core_action 的业务定义及 event_name 映射",
+    "第 7 天留存观察窗口的边界规则",
+    "首次激活与七日留存之间的优先级决策准则",
+    "plan 维度的取值时点规则"
+  ],
+  "risks": [],
+  "role": "growth-business",
+  "role_payload": {
+    "business_context": "订阅制 B2B 产品正在规划下一季度 onboarding 优化，需要在提升首次激活与改善激活后七日留存之间确定优先方向。本次 smoke test 仅验证 Business 到 Metrics 的原生角色契约交接，不包含数据库访问、结果观察、SQL 生成或执行。分析对象假定为账户，日期与窗口按 Asia/Shanghai 解释；首次激活、core_action、第 7 天窗口以及 plan 取值时点仍需作为后续指标契约输入。",
+    "decision_question": "对于 2026-07-01 至 2026-07-31 创建的非测试账户，下一季度 onboarding 优化应优先提升首次激活，还是优先提升首次激活后的七日留存，并应依据哪些经复核的指标契约与决策准则作出选择？",
+    "dimensions": [
+      "signup_cohort_day",
+      "plan"
+    ],
+    "non_goals": [
+      "不最终确定指标公式、事件资格规则或指标版本。",
+      "不生成、审阅或执行 SQL。",
+      "不访问数据库或声称观察到任何数据事实。",
+      "不计算激活率、七日留存率或分群结果。",
+      "不进行因果归因、机会量化或最终业务推荐。",
+      "不启动或授权后续角色。"
+    ],
+    "open_questions": [
+      "必需输入：首次激活由哪些事件或事件组合定义？",
+      "必需输入：哪些 event_name 值映射为 core_action？",
+      "必需输入：第 7 天留存窗口采用自然日、连续时长还是带容差窗口？",
+      "必需输入：首次激活与七日留存的优先级使用什么决策准则？",
+      "必需输入：plan 维度应采用哪个业务时点的值？"
+    ],
+    "scope": [
+      "人群：2026-07-01 至 2026-07-31 创建的非测试账户。",
+      "时区：Asia/Shanghai。",
+      "产品范围：订阅制 B2B 产品的 onboarding。",
+      "决策范围：比较首次激活与激活后七日留存两个优化方向。",
+      "请求 framing：定义激活指标，并将用户指定的 seven_day_retained_activation_rate 纳入后续指标契约。",
+      "用户指定率的业务表述：首次激活后第 7 天仍至少发生一次 core_action 的账户数除以首次激活账户数。",
+      "维度范围：signup_cohort_day 与 plan。",
+      "假设：账户为分析单位；人群日期和观察窗口按 Asia/Shanghai 解释；现有字段清单不构成数据库访问或观测证据。",
+      "后续必需输入：首次激活定义、core_action 映射、第 7 天窗口边界、优先级决策准则及 plan 取值时点。"
+    ]
+  },
+  "run_id": "native-agent-bmr-20260809",
+  "schema_version": "1.2",
+  "stage_id": "s01-business",
+  "stage_status": "PASS",
+  "summary": "已将订阅制 B2B 产品的 onboarding 优先级请求限定为指标设计与独立复核问题，明确分析人群、时间范围、时区、维度、假设及后续所需业务输入；未访问数据库、观察数据、定义最终指标或生成 SQL。"
+}

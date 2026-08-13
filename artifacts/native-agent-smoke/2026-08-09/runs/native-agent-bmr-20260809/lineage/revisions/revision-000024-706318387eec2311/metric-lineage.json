@@ -1,0 +1,27 @@
+{
+  "metrics": [
+    {
+      "breaks": [],
+      "chart_ids": [],
+      "definition_artifact": "stage_artifact-bdb6024f9d66484e",
+      "insight_evidence": [],
+      "metric_id": "first_activation_rate",
+      "metric_version": 1,
+      "recommendation_refs": [],
+      "result_columns": [],
+      "sql_expressions": []
+    },
+    {
+      "breaks": [],
+      "chart_ids": [],
+      "definition_artifact": "stage_artifact-bdb6024f9d66484e",
+      "insight_evidence": [],
+      "metric_id": "seven_day_retained_activation_rate",
+      "metric_version": 1,
+      "recommendation_refs": [],
+      "result_columns": [],
+      "sql_expressions": []
+    }
+  ],
+  "schema_version": "1.2"
+}

@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "captured_at": "2026-07-31T00:00:00+08:00",
+  "git_commit": "9e5d2a2",
+  "git_branch": "agent/sequential-multi-agent-pipeline",
+  "workflow": {
+    "routing": "fixed-seven-stage",
+    "roles": [
+      "growth-business",
+      "growth-metrics",
+      "growth-sql",
+      "growth-insight",
+      "growth-visualization",
+      "growth-review",
+      "growth-report"
+    ],
+    "parallel_stages": false,
+    "user_confirmation_between_roles": true,
+    "handoff_format": "markdown",
+    "state_implementation": "prompt-defined-only"
+  },
+  "data": {
+    "connectors": ["sqlite", "mysql"],
+    "sql_guard": "keyword-and-statement-splitting",
+    "query_manifest": false,
+    "metric_lineage": false,
+    "real_chart_rendering": false
+  },
+  "measurement": {
+    "elapsed_seconds": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "reason": "The v1.0 runtime did not expose a repeatable machine-readable measurement log."
+  }
+}

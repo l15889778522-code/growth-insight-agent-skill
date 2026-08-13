@@ -1,0 +1,6 @@
+{
+  "business_question": "Why did D7 retention decline for the latest mature signup cohorts?",
+  "data_source": "fixture-only",
+  "purpose": "Frozen v1.1 compatibility baseline",
+  "schema_version": "1.1"
+}

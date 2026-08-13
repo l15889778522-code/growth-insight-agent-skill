@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "allOf": [
+    {"$ref": "../handoff.schema.json"},
+    {
+      "type": "object",
+      "properties": {
+        "role": {"const": "growth-visualization"},
+        "role_payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source_file", "source_sha256", "chart_specs", "reading_order"],
+          "properties": {
+            "source_file": {"type": ["string", "null"]},
+            "source_sha256": {"type": ["string", "null"], "pattern": "^[A-Fa-f0-9]{64}$"},
+            "chart_specs": {"type": "array", "items": {"$ref": "../chart-specs.schema.json#/$defs/chart"}},
+            "reading_order": {"type": "array", "items": {"type": "string"}}
+          }
+        }
+      }
+    }
+  ]
+}

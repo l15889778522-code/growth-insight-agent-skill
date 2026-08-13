@@ -1,0 +1,98 @@
+{
+  "schema_version": "1.2",
+  "smoke_id": "native-agent-business-metrics-review-20260809",
+  "status": "passed_stage_chain",
+  "completed_at": "2026-08-11T02:40:01.355Z",
+  "run_id": "native-agent-bmr-20260809",
+  "intended_roles": [
+    "growth-business",
+    "growth-metrics",
+    "growth-review"
+  ],
+  "completed_roles": [
+    "growth-business",
+    "growth-metrics",
+    "growth-review"
+  ],
+  "run_status": "finalizing",
+  "run_audit_valid": true,
+  "run_state_sha256": "d2bfc9a75266404e2effe266e2bc4b6f52fc5543d26653c375bbd33b4071602e",
+  "events_sha256": "b470b322ae83714681dc063994d3cdac1f44ff7f5ebfaa710964a00117b4d97f",
+  "approvals_sha256": "ada4deebc16986d946f99f37f480fcf59854db667a4d74a79f72757c87633ecb",
+  "route_sha256": "8fe4ba0dede4d5d9e778d0aec903d5082e587aabaea39e405c1654c7f2613b0d",
+  "accepted_stages": [
+    {
+      "stage_id": "s01-business",
+      "role": "growth-business",
+      "attempt": 2,
+      "agent_id": "019fee9c-f66d-7c82-b82a-bf83eacae551",
+      "artifact_sha256": "7531ff7e15dc2db8ba325f0a39b1208e7249f7d5c045528244e87d6bff7041df",
+      "receipt_sha256": "bc439ded17c30e9d0292d715e841048bd750ea28b8cfcf6d05c05a5cb8ce87f4",
+      "stage_status": "PASS"
+    },
+    {
+      "stage_id": "s02-metrics",
+      "role": "growth-metrics",
+      "attempt": 4,
+      "agent_id": "019feeab-a6df-7bb1-860f-f8895a010827",
+      "artifact_sha256": "d6034d576e88f297eb3a32c451c5e2d1f964f5d929583f3b95c2d9bd01519458",
+      "receipt_sha256": "d9d09471b942c96608293406e4155a50b88cc972371bb03fc074af41f97c5cc9",
+      "stage_status": "PASS"
+    },
+    {
+      "stage_id": "s03-review",
+      "role": "growth-review",
+      "attempt": 1,
+      "agent_id": "019feeae-20ab-7053-84ff-033a82bf30c1",
+      "artifact_sha256": "4393862e6e151fd13cf8d3c368d252ebe3c6bc3409d0172e1d87db426eaee27b",
+      "receipt_sha256": "72769a03135f18d337476b5d8f5076988e0694ebfa68051ab649354f54a57166",
+      "stage_status": "PASS_WITH_RISKS"
+    }
+  ],
+  "rejected_observations": [
+    {
+      "agent_id": "019fe713-4540-7fc1-baa5-77b164ccd7a9",
+      "probe": "full_business_stage_before_restart",
+      "observed_contract_version": "1.1",
+      "reason": "Legacy contract response was not recorded as a stage."
+    },
+    {
+      "agent_id": "019fe715-9fb0-7131-880f-29ce5aab7a47",
+      "probe": "contract_hot_reload_before_restart",
+      "observed_contract_version": "1.1",
+      "response_path": "stale-contract-probe.json",
+      "response_sha256": "3b9fb9789d864b472acdbe71af5215a1f10c61da77ca3c50ddd5c1ad83696601",
+      "reason": "The running Codex task reported a cached governing v1.1 contract."
+    },
+    {
+      "agent_id": "019feea0-08cc-7560-aab1-803f65e0cb1f",
+      "probe": "metrics_attempt_1",
+      "observed_contract_version": "1.1",
+      "response_path": "runs/native-agent-bmr-20260809/stages/s02-metrics/attempt-1/rejected-response-contract-1.1.txt",
+      "reason": "The personal Metrics Agent was still v1.1. This response exposed and motivated the executable contract-version gate."
+    },
+    {
+      "agent_id": "019feea4-de4a-7010-8cf1-dbc6d1341e95",
+      "probe": "metrics_attempt_2",
+      "observed_contract_version": "1.1",
+      "response_path": "runs/native-agent-bmr-20260809/stages/s02-metrics/attempt-2/rejected-response-runtime-conflict.txt",
+      "reason": "The Agent correctly blocked on the personal v1.1 versus project v1.2 governing-instruction conflict."
+    },
+    {
+      "agent_id": "019feea8-fe32-7073-8ae0-eb54ec9cae24",
+      "probe": "metrics_attempt_3",
+      "observed_contract_version": "1.2",
+      "response_path": "runs/native-agent-bmr-20260809/stages/s02-metrics/attempt-3/raw-response.txt",
+      "reason": "The runtime context gate rejected paraphrased approved Business decisions."
+    }
+  ],
+  "installation": {
+    "project_agent_preflight_passed": true,
+    "personal_agent_package_upgraded_to": "1.2",
+    "personal_agent_package_sha256": "490535832b5ad59e8c7c7ad9ba8a2619149a6ff482bcbc85ea8e7acd5893ef7d",
+    "personal_agent_verify_passed": true,
+    "restart_required_after_install": false
+  },
+  "scope_note": "This route intentionally ends at Review. The approved stage chain is complete and audited; final Report publication is outside this smoke test, so the run remains finalizing.",
+  "fixture_note": "The request fixture contains legacy mojibake from its original creation. This smoke validates native role loading, contract enforcement, handoff, approval, lineage, and audit mechanics rather than language fidelity."
+}

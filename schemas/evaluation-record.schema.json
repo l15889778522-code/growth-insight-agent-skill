@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "qualityScores": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["business_coverage", "metric_consistency", "route_quality", "sql_executability", "evidence_traceability"],
+      "properties": {
+        "business_coverage": {"type": "number", "minimum": 0, "maximum": 1},
+        "metric_consistency": {"type": "number", "minimum": 0, "maximum": 1},
+        "route_quality": {"type": "number", "minimum": 0, "maximum": 1},
+        "sql_executability": {"type": "number", "minimum": 0, "maximum": 1},
+        "evidence_traceability": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"}
+      }
+    },
+    "ruleEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "sources", "details"],
+      "properties": {
+        "passed": {"type": "boolean"},
+        "sources": {"type": "array", "items": {"$ref": "#/$defs/source"}, "uniqueItems": true},
+        "details": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "case_id",
+    "mode",
+    "completed",
+    "roles_run",
+    "rule_checks",
+    "quality_scores",
+    "hallucination_count",
+    "privilege_violation_count",
+    "gate_bypass_count",
+    "human_revisions",
+    "elapsed_ms",
+    "token_usage",
+    "notes"
+  ],
+  "properties": {
+    "schema_version": {"enum": ["1.1", "1.2"]},
+    "case_id": {"type": "string", "minLength": 1},
+    "mode": {"enum": ["single-codex", "v1.0", "v1.1", "v1.2"]},
+    "completed": {"type": "boolean"},
+    "roles_run": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "rule_checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sql_safe", "schema_valid", "evidence_resolvable", "no_gate_bypass", "recovery_success"],
+      "properties": {
+        "sql_safe": {"type": "boolean"},
+        "schema_valid": {"type": "boolean"},
+        "evidence_resolvable": {"type": "boolean"},
+        "no_gate_bypass": {"type": "boolean"},
+        "recovery_success": {"type": "boolean"}
+      }
+    },
+    "rule_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sql_safe", "schema_valid", "evidence_resolvable", "no_gate_bypass", "recovery_success"],
+      "properties": {
+        "sql_safe": {"$ref": "#/$defs/ruleEvidence"},
+        "schema_valid": {"$ref": "#/$defs/ruleEvidence"},
+        "evidence_resolvable": {"$ref": "#/$defs/ruleEvidence"},
+        "no_gate_bypass": {"$ref": "#/$defs/ruleEvidence"},
+        "recovery_success": {"$ref": "#/$defs/ruleEvidence"}
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_type", "run_id", "run_state_sha256", "events_sha256", "captured_at", "audit_errors"],
+      "properties": {
+        "source_type": {"enum": ["run_artifacts", "external_adapter"]},
+        "run_id": {"type": ["string", "null"]},
+        "run_state_sha256": {"type": ["string", "null"], "pattern": "^[A-Fa-f0-9]{64}$"},
+        "events_sha256": {"type": ["string", "null"], "pattern": "^[A-Fa-f0-9]{64}$"},
+        "captured_at": {"type": "string", "format": "date-time"},
+        "audit_errors": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "quality_scores": {"oneOf": [{"$ref": "#/$defs/qualityScores"}, {"type": "null"}]},
+    "quality_review": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rubric_version", "blind_to_mode", "reviewer_ids", "scores", "rationales", "disagreements"],
+          "properties": {
+            "rubric_version": {"type": "string", "minLength": 1},
+            "blind_to_mode": {"type": "boolean"},
+            "reviewer_ids": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "uniqueItems": true},
+            "scores": {"$ref": "#/$defs/qualityScores"},
+            "rationales": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["business_coverage", "metric_consistency", "route_quality", "sql_executability", "evidence_traceability"],
+              "properties": {
+                "business_coverage": {"type": "string", "minLength": 1},
+                "metric_consistency": {"type": "string", "minLength": 1},
+                "route_quality": {"type": "string", "minLength": 1},
+                "sql_executability": {"type": "string", "minLength": 1},
+                "evidence_traceability": {"type": "string", "minLength": 1}
+              }
+            },
+            "disagreements": {"type": "array", "items": {"type": "string"}}
+          }
+        }
+      ]
+    },
+    "hallucination_count": {"type": ["integer", "null"], "minimum": 0},
+    "privilege_violation_count": {"type": ["integer", "null"], "minimum": 0},
+    "gate_bypass_count": {"type": "integer", "minimum": 0},
+    "human_revisions": {"type": "integer", "minimum": 0},
+    "elapsed_ms": {"type": ["integer", "null"], "minimum": 0},
+    "token_usage": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["input_tokens", "output_tokens", "total_tokens"],
+      "properties": {
+        "input_tokens": {"type": "integer", "minimum": 0},
+        "output_tokens": {"type": "integer", "minimum": 0},
+        "total_tokens": {"type": "integer", "minimum": 0}
+      }
+    },
+    "notes": {"type": "array", "items": {"type": "string"}}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"schema_version": {"const": "1.2"}}, "required": ["schema_version"]},
+      "then": {"required": ["provenance", "rule_evidence", "quality_review"]}
+    },
+    {
+      "if": {
+        "properties": {
+          "provenance": {
+            "properties": {"source_type": {"const": "run_artifacts"}},
+            "required": ["source_type"]
+          }
+        },
+        "required": ["provenance"]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "run_id": {"type": "string", "minLength": 3},
+              "run_state_sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
+              "events_sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"}
+            }
+          }
+        }
+      }
+    }
+  ]
+}

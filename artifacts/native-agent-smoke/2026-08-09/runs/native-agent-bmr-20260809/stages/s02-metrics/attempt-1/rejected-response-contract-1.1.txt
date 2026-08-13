@@ -1,0 +1,143 @@
+{
+  "schema_version": "1.1",
+  "agent_contract_version": "1.1",
+  "run_id": "native-agent-bmr-20260809",
+  "stage_id": "s02-metrics",
+  "role": "growth-metrics",
+  "attempt": 1,
+  "stage_status": "PASS",
+  "summary": "Defined a compact candidate metric set for first activation and seven-day retained activation using only the supplied schema context. No data access, metric-value calculation, SQL generation, or SQL execution is claimed.",
+  "confirmed_decisions": [
+    "The eligible population is non-test accounts created from 2026-07-01 through 2026-07-31 in Asia/Shanghai.",
+    "The analysis unit is the account.",
+    "Both candidate metrics are segmented by signup_cohort_day and plan.",
+    "The user-specified metric_id seven_day_retained_activation_rate is preserved."
+  ],
+  "conflicts": [],
+  "facts": [],
+  "calculations": [],
+  "assumptions": [
+    "signup_cohort_day is derived from accounts.created_at in Asia/Shanghai.",
+    "Accounts are joined to events through account_id.",
+    "Candidate metrics remain provisional until activation-event mappings, observation-window boundaries, and plan snapshot timing are approved."
+  ],
+  "hypotheses": [],
+  "evidence": [],
+  "metrics": [
+    {
+      "metric_id": "first_activation_rate",
+      "name": "First Activation Rate",
+      "version": 1
+    },
+    {
+      "metric_id": "seven_day_retained_activation_rate",
+      "name": "Seven-Day Retained Activation Rate",
+      "version": 1
+    }
+  ],
+  "data_artifacts": [],
+  "risks": [
+    "The qualifying first-activation event_name values and activation observation window are not yet defined.",
+    "The qualifying core_action event_name values and exact Day-7 boundary are not yet defined.",
+    "accounts.plan has no supplied history, so the required plan snapshot timing cannot yet be verified.",
+    "The supplied schema is field-level context only and does not establish data availability, completeness, timestamp semantics, or event quality."
+  ],
+  "open_questions": [
+    "Which event_name value or event sequence constitutes first activation?",
+    "What is the maximum allowed time from account creation to first activation?",
+    "Which event_name values constitute core_action?",
+    "Does Day 7 mean the seventh Asia/Shanghai calendar day, a 168-hour window, or another approved interval?",
+    "Should plan be evaluated at signup, first activation, or observation time?"
+  ],
+  "required_next_inputs": [],
+  "recommended_next_stage": "growth-review",
+  "lineage": [],
+  "role_payload": {
+    "metrics": [
+      {
+        "metric_id": "first_activation_rate",
+        "name": "First Activation Rate",
+        "type": "process",
+        "business_definition": "Among eligible non-test accounts created from 2026-07-01 through 2026-07-31 in Asia/Shanghai, the share that records a first qualifying activation event after account creation and within the approved activation observation window.",
+        "formula": "COUNT(DISTINCT eligible accounts.account_id with MIN(events.event_time) for an approved activation events.event_name occurring on or after accounts.created_at and within the approved activation window) / COUNT(DISTINCT eligible accounts.account_id), where eligible accounts have accounts.is_test = false and an Asia/Shanghai signup_cohort_day from 2026-07-01 through 2026-07-31.",
+        "grain": "signup_cohort_day by plan",
+        "dimensions": [
+          "signup_cohort_day",
+          "plan"
+        ],
+        "time_window": "Signup cohort from 2026-07-01 through 2026-07-31 in Asia/Shanghai; activation observation window pending business approval.",
+        "field_dependencies": [
+          "accounts.account_id",
+          "accounts.created_at",
+          "accounts.plan",
+          "accounts.is_test",
+          "events.account_id",
+          "events.event_name",
+          "events.event_time"
+        ],
+        "status": "candidate",
+        "source": "request.json available_schema and approved Business stage; schema context only, with no data access claimed",
+        "owner": "Growth team (provisional)",
+        "data_risks": [
+          "Qualifying activation event_name values or event sequence are unresolved.",
+          "The activation observation window is unresolved.",
+          "The timestamp timezone and conversion behavior are unverified.",
+          "The required plan snapshot timing is unresolved because only accounts.plan is available.",
+          "Event duplication, lateness, and completeness have not been assessed."
+        ],
+        "version": 1
+      },
+      {
+        "metric_id": "seven_day_retained_activation_rate",
+        "name": "Seven-Day Retained Activation Rate",
+        "type": "core",
+        "business_definition": "Among eligible accounts that achieved first activation and whose complete approved Day-7 observation window has elapsed, the share that records at least one qualifying core_action during that Day-7 window.",
+        "formula": "COUNT(DISTINCT first-activated accounts.account_id with at least one events.event_name in the approved core_action set during the approved Day-7 window after first activation) / COUNT(DISTINCT first-activated accounts.account_id whose complete approved Day-7 window has elapsed). First activation and population eligibility follow first_activation_rate version 1.",
+        "grain": "signup_cohort_day by plan",
+        "dimensions": [
+          "signup_cohort_day",
+          "plan"
+        ],
+        "time_window": "Signup cohort from 2026-07-01 through 2026-07-31 in Asia/Shanghai; retained activity measured in the approved Day-7 window after first activation, with exact boundaries pending business approval.",
+        "field_dependencies": [
+          "accounts.account_id",
+          "accounts.created_at",
+          "accounts.plan",
+          "accounts.is_test",
+          "events.account_id",
+          "events.event_name",
+          "events.event_time"
+        ],
+        "status": "candidate",
+        "source": "request.json user_metric, request.json available_schema, and approved Business stage; schema context only, with no data access claimed",
+        "owner": "Growth team (provisional)",
+        "data_risks": [
+          "The metric depends on the unresolved first-activation definition.",
+          "Qualifying core_action event_name values are unresolved.",
+          "The Day-7 calendar-day versus 168-hour boundary is unresolved.",
+          "Cohort maturity must exclude accounts whose complete Day-7 window has not elapsed.",
+          "The required plan snapshot timing is unresolved because only accounts.plan is available.",
+          "The timestamp timezone, event duplication, event lateness, and event completeness are unverified."
+        ],
+        "version": 1
+      }
+    ],
+    "dependency_gaps": [
+      "Approve the event_name value or event sequence defining first activation.",
+      "Approve the observation window allowed between accounts.created_at and first activation.",
+      "Approve the events.event_name values mapped to core_action.",
+      "Approve whether Day 7 is an Asia/Shanghai calendar day, a 168-hour interval, or another explicit window.",
+      "Approve whether accounts.plan should represent plan at signup, first activation, or observation time; the supplied schema provides no plan history.",
+      "Confirm timestamp timezone semantics and data-quality expectations before operational use."
+    ],
+    "conflict_checks": [
+      "Confirmed that seven_day_retained_activation_rate is included with the exact user-supplied metric_id.",
+      "Confirmed that seven_day_retained_activation_rate includes signup_cohort_day and plan as dimensions.",
+      "Confirmed that every field dependency exists in the supplied available_schema.",
+      "Confirmed that no metric values, data access, SQL generation, or SQL execution are claimed.",
+      "No structured metric-edit object was supplied for this attempt.",
+      "No approved upstream metric definition exists to overwrite; unresolved business choices are recorded as dependency gaps and data risks.",
+      "No definition conflict was found with the approved Business-stage scope."
+    ]
+  }
+}

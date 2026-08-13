@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "allOf": [
+    {"$ref": "../handoff.schema.json"},
+    {
+      "type": "object",
+      "properties": {
+        "role": {"const": "growth-sql"},
+        "role_payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["dialect", "field_mappings", "queries", "unsupported_metrics"],
+          "properties": {
+            "dialect": {"type": "string", "minLength": 1},
+            "field_mappings": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["metric_id", "source_fields", "sql_expression", "result_column", "supported"],
+                "properties": {
+                  "metric_id": {"type": "string", "minLength": 1},
+                  "source_fields": {"type": "array", "items": {"type": "string"}},
+                  "sql_expression": {"type": ["string", "null"]},
+                  "result_column": {"type": ["string", "null"]},
+                  "supported": {"type": "boolean"}
+                }
+              }
+            },
+            "queries": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["sql_id", "purpose", "sql", "metric_ids", "risks", "executable"],
+                "properties": {
+                  "sql_id": {"type": "string", "minLength": 1},
+                  "purpose": {"type": "string", "minLength": 1},
+                  "sql": {"type": "string", "minLength": 1},
+                  "metric_ids": {"type": "array", "items": {"type": "string"}},
+                  "risks": {"type": "array", "items": {"type": "string"}},
+                  "executable": {"type": "boolean"}
+                }
+              }
+            },
+            "unsupported_metrics": {"type": "array", "items": {"type": "string"}}
+          }
+        }
+      }
+    }
+  ]
+}

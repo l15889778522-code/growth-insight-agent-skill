@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "spec_path", "spec_sha256", "source_file", "source_sha256", "rendered_at", "charts"],
+  "properties": {
+    "schema_version": {"enum": ["1.1", "1.2"]},
+    "spec_path": {"type": "string", "minLength": 1},
+    "spec_sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
+    "source_file": {"type": "string", "minLength": 1},
+    "source_sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
+    "rendered_at": {"type": "string", "format": "date-time"},
+    "charts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["chart_id", "status", "outputs", "error"],
+        "properties": {
+          "chart_id": {"type": "string", "minLength": 1},
+          "status": {"enum": ["rendered", "failed", "blocked_by_missing_data"]},
+          "outputs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["format", "path", "sha256"],
+              "properties": {
+                "format": {"enum": ["png", "html"]},
+                "path": {"type": "string", "minLength": 1},
+                "sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"}
+              }
+            }
+          },
+          "error": {"type": ["string", "null"]}
+        }
+      }
+    }
+  }
+}

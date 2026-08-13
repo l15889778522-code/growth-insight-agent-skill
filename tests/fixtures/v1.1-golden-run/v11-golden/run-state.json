@@ -1,0 +1,82 @@
+{
+  "approved_artifacts": [],
+  "artifacts": [],
+  "created_at": "2026-08-09T13:30:00.060Z",
+  "current_stage": null,
+  "data_source": null,
+  "last_event_id": 1,
+  "pending_approval": null,
+  "pending_metric_edit": null,
+  "pending_query": null,
+  "pending_stage": null,
+  "resume_status": null,
+  "revision": 1,
+  "route_id": null,
+  "route_revision": 0,
+  "route_sha256": null,
+  "run_id": "v11-golden",
+  "runtime": {
+    "agent_config_hashes": {
+      "growth-business": "ee20346a90b9768f46278f68e7d7f1219c0cd98e47149d0f82736ab86125a51e",
+      "growth-insight": "a998cc8edf4a5adcc3de80930452e6b0bc525868d7aca34c925705bb28e22bd7",
+      "growth-metrics": "72db92c48f7fb891af1013e3db73a2b28f56d3b87e690129e7ef23c7c164a015",
+      "growth-report": "1bb0dd6f9c36d284f8e6e894b0202f606fa6c69547dd74cec2bb20cd57995c05",
+      "growth-review": "519ed6682d28859c24102a7b45307fa104a012b19e89aa43f5948293c0deadb4",
+      "growth-sql": "776b385b9b6bbdb09c906648ad4538937dbb0e46c614b848fd143105a4a03cec",
+      "growth-visualization": "694f0881c60fe2c281c664f566c577794ecc086d51477bfb61801b451b50a7ff"
+    },
+    "agent_settings": {
+      "growth-business": {
+        "model": null,
+        "model_reasoning_effort": "medium",
+        "sandbox_mode": "read-only"
+      },
+      "growth-insight": {
+        "model": null,
+        "model_reasoning_effort": "high",
+        "sandbox_mode": "read-only"
+      },
+      "growth-metrics": {
+        "model": null,
+        "model_reasoning_effort": "high",
+        "sandbox_mode": "read-only"
+      },
+      "growth-report": {
+        "model": null,
+        "model_reasoning_effort": "high",
+        "sandbox_mode": "read-only"
+      },
+      "growth-review": {
+        "model": null,
+        "model_reasoning_effort": "high",
+        "sandbox_mode": "read-only"
+      },
+      "growth-sql": {
+        "model": null,
+        "model_reasoning_effort": "high",
+        "sandbox_mode": "read-only"
+      },
+      "growth-visualization": {
+        "model": null,
+        "model_reasoning_effort": "medium",
+        "sandbox_mode": "read-only"
+      }
+    },
+    "kind": "codex_native",
+    "model_policy": "native-portable",
+    "resolved_models": {
+      "growth-business": null,
+      "growth-insight": null,
+      "growth-metrics": null,
+      "growth-report": null,
+      "growth-review": null,
+      "growth-sql": null,
+      "growth-visualization": null
+    },
+    "surface": null
+  },
+  "schema_version": "1.1",
+  "stages": [],
+  "status": "initialized",
+  "updated_at": "2026-08-09T13:30:00.068Z"
+}

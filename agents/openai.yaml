@@ -1,7 +1,7 @@
 interface:
-  display_name: "GrowthInsight Agent"
-  short_description: "Multi-agent data analysis workflow"
-  default_prompt: "Use $growth-insight-agent to analyze a business metric problem with staged agent review."
-policy:
-  allow_implicit_invocation: true
+  display_name: "多Agent数据分析Skill"
+  short_description: "Codex 原生子 Agent、动态路由和逐阶段确认的数据分析工作流"
+  default_prompt: "使用 $multi-agent-data-analysis-skill 为我的数据需求生成可审阅路由。先等待我确认路由，再逐个启动原生子 Agent；每个角色完成后等待我确认。"
 
+policy:
+  allow_implicit_invocation: false

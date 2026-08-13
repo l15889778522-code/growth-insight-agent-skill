@@ -1,0 +1,5 @@
+-c constraints.txt
+-r requirements.txt
+pytest==9.1.1
+coverage==7.15.2
+PyYAML==6.0.3

@@ -1,131 +1,84 @@
-# Workflow
+# Stateful Native-Agent Workflow
 
-Use this workflow for every analysis request unless the user explicitly asks for a narrower task.
+The root task owns orchestration and artifacts. Specialist work runs in visible Codex native subagent threads, one at a time.
 
-## Stage 0: Requirement Capture
-
-Record:
-
-- Original user request
-- Business context provided by the user
-- Available data sources
-- Whether mock schema, uploaded schema, or live database access will be used
-- Known constraints and non-goals
-
-Output target:
+## New Run
 
 ```text
-docs/00_requirement.md
+request
+  -> initialize run
+  -> propose route
+  -> awaiting_route_confirmation
+  -> user confirms exact route revision
+  -> run one role
+  -> validate and render
+  -> awaiting_user_confirmation
 ```
 
-## Stage 1: Business Understanding
+The initial request creates and displays a route only. It does not start Business automatically.
 
-Business Agent should produce:
+## Role Lifecycle
 
-- Business background
-- Core business question
-- Analysis objective
-- Analysis population
-- Analysis time window
-- Key dimensions
-- Assumptions
-- Open questions
-- Non-goals
+For each stage:
 
-Stop and ask the user to confirm before continuing.
+1. Verify every declared dependency is approved; skipped stages cannot remain as dependencies.
+2. Start one named custom Agent and create a new attempt directory.
+3. Pass exact approved JSON paths and hashes, never conversational memory alone.
+4. Require one JSON object matching `schemas/handoff.schema.json` and the role Schema.
+5. Save the raw response before parsing it.
+6. Allow one correction for validation errors.
+7. Record the native thread ID, resolved model, effort, elapsed time, and Token usage when available.
+8. Render Markdown from validated JSON.
+9. Register JSON, Markdown, validation-report hashes, and move passing work to `awaiting_user_confirmation`.
+10. Show the result and end the current response.
+11. Start at most one next role only after a later explicit user confirmation.
 
-## Stage 2: Metric Framework
+`BLOCKED` and `FAIL` are not approvable stage results. They move the run to a blocked or failed boundary for input, revision, or rollback.
 
-Metrics Agent should produce an initial metric table.
+Report is terminal. After its validated JSON and final Markdown are written, enter `finalizing`, rebuild required lineage, verify chart manifests, and call `runctl.py finalize`. No additional user stage gate is required.
 
-Every metric should include:
+## User Commands
 
-- Metric name
-- Metric type
-- Formula
-- Business meaning
-- Analysis dimensions
-- Required fields
-- Required tables
-- Whether it is required or optional
-- Risk notes
+Route gate:
 
-Stop and allow user edits:
+- `确认路由`
+- `修改路由：...`
+- `终止分析`
 
-- Add metric
-- Edit metric
-- Delete metric
-- Confirm final metric framework
+Role gate:
 
-After edits, rewrite the metric table as the final confirmed metric framework.
+- `确认，进入下一步` or `继续`
+- `修改：...` or `补充：...`
+- `重新生成当前阶段` or `重新生成这一阶段`
+- `跳过当前阶段`
+- `回退到：<角色>`
+- `终止分析`
 
-## Stage 3: SQL Analysis
+Metrics also accepts `新增指标`、`修改指标`、`删除指标` and `确认最终指标体系`.
 
-SQL Agent should:
-
-- Read the confirmed metric framework.
-- Read mock schema, uploaded schema, or inspected database schema.
-- Check whether required fields exist.
-- Generate SQL for each measurable metric or analysis path.
-- Explain purpose, filters, joins, grouping, and risks.
-- Validate SQL with `scripts/sql_guard.py`.
-
-Stop before live query execution.
-
-## Stage 4: Insights
-
-Insight Agent should produce:
-
-- Findings, if query results are available
-- Hypotheses, if query results are not available
-- Dimension drill-down paths
-- Verification methods
-- Business interpretations
-- Recommended next analysis
-
-Stop and ask for confirmation.
-
-## Stage 5: Visualization Plan
-
-Visualization Agent should produce:
-
-- Chart list
-- Chart type
-- Target metric
-- Dimensions
-- Question answered by the chart
-- Suggested layout order
-- Caveats
-
-Stop and ask for confirmation.
-
-## Stage 6: Review
-
-Review Agent should produce:
-
-- Pass, conditional pass, or fail
-- P0/P1/P2/P3 issues
-- Metric consistency review
-- SQL risk review
-- Data quality review
-- Missing dimension review
-- Report readiness recommendation
-
-Stop and ask for confirmation.
-
-## Stage 7: Final Report
-
-Main Agent synthesizes the final report only after review confirmation.
-
-Use:
+## Query Branch
 
 ```text
-assets/final-report-template.md
+SQL stage approved
+  -> prepare final read-only SQL
+  -> awaiting_query_confirmation
+  -> user confirms exact SQL SHA-256
+  -> deterministic query runner
+  -> manifest + CSV + profile
+  -> start Insight under the stored SQL-stage approval
 ```
 
-Output target:
+Query confirmation is separate from SQL-stage confirmation. A changed SQL request requires a new query confirmation.
+The fingerprint also binds dialect, data-source label, non-secret physical source fingerprint, timeout, row limit, and maximum result bytes.
 
-```text
-docs/07_final_report.md
-```
+## Revision And Review
 
+- Revising a stage creates a new attempt and never overwrites history.
+- All dependent approved artifacts become `stale`.
+- A route revision can carry forward an approval only when stage identity, input hashes, and artifact hash are unchanged and listed in `reused_approved_artifacts`.
+- Review `FAIL` creates a hash-bound rollback plan. Only a later `approve_rollback` action routes back to the earliest responsible stage and invalidates completed descendants.
+- Report requires Review `PASS` or `PASS_WITH_RISKS`.
+
+## Concurrency
+
+Only one role may be `running`. Read-heavy Agent work can be parallelized in other projects, but this Skill intentionally remains serial because every handoff requires user approval and downstream artifacts depend on exact versions.

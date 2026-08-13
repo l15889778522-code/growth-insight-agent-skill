@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.multi-agent-data-analysis/schemas/result-profile.schema.json",
+  "title": "Bounded Query Result Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "row_count", "profiling", "columns"],
+  "properties": {
+    "schema_version": {"const": "1.2"},
+    "row_count": {"type": "integer", "minimum": 0},
+    "profiling": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "memory_model",
+        "distinct_exact_max_values",
+        "distinct_exact_max_utf8_bytes",
+        "distinct_approximate_max_hashes",
+        "sample_max_values",
+        "sample_max_value_utf8_bytes",
+        "sample_max_total_utf8_bytes"
+      ],
+      "properties": {
+        "memory_model": {"const": "bounded_per_column"},
+        "distinct_exact_max_values": {"type": "integer", "minimum": 1},
+        "distinct_exact_max_utf8_bytes": {"type": "integer", "minimum": 1},
+        "distinct_approximate_max_hashes": {"type": "integer", "minimum": 3},
+        "sample_max_values": {"type": "integer", "minimum": 1},
+        "sample_max_value_utf8_bytes": {"type": "integer", "minimum": 1},
+        "sample_max_total_utf8_bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "columns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "type",
+          "observed_types",
+          "type_conflict",
+          "null_count",
+          "non_null_count",
+          "non_finite_count",
+          "empty_string_count",
+          "timezone_aware_count",
+          "timezone_naive_count",
+          "binary_count",
+          "distinct_count",
+          "minimum",
+          "maximum",
+          "distinct_count_metadata",
+          "samples",
+          "sample_metadata"
+        ],
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "type": {"type": "string", "minLength": 1},
+          "observed_types": {
+            "type": "array",
+            "items": {"enum": ["boolean", "integer", "number", "decimal", "binary", "date", "datetime", "string"]},
+            "uniqueItems": true
+          },
+          "type_conflict": {"type": "boolean"},
+          "null_count": {"type": "integer", "minimum": 0},
+          "non_null_count": {"type": "integer", "minimum": 0},
+          "non_finite_count": {"type": "integer", "minimum": 0},
+          "empty_string_count": {"type": "integer", "minimum": 0},
+          "timezone_aware_count": {"type": "integer", "minimum": 0},
+          "timezone_naive_count": {"type": "integer", "minimum": 0},
+          "binary_count": {"type": "integer", "minimum": 0},
+          "distinct_count": {"type": "integer", "minimum": 0},
+          "minimum": {"type": ["number", "string", "null"]},
+          "maximum": {"type": ["number", "string", "null"]},
+          "distinct_count_metadata": {
+            "type": "object",
+            "required": ["mode", "algorithm", "max_exact_values", "max_exact_utf8_bytes", "max_approximate_hashes"],
+            "properties": {
+              "mode": {"enum": ["exact", "approximate"]},
+              "algorithm": {"enum": ["bounded_canonical_value_set", "kmv_64"]},
+              "retained_values": {"type": "integer", "minimum": 0},
+              "retained_utf8_bytes": {"type": "integer", "minimum": 0},
+              "retained_hashes": {"type": "integer", "minimum": 0},
+              "relative_standard_error": {"type": "number", "minimum": 0},
+              "max_exact_values": {"type": "integer", "minimum": 1},
+              "max_exact_utf8_bytes": {"type": "integer", "minimum": 1},
+              "max_approximate_hashes": {"type": "integer", "minimum": 3}
+            },
+            "additionalProperties": false
+          },
+          "samples": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["value", "truncated", "original_utf8_bytes"],
+              "properties": {
+                "value": {},
+                "truncated": {"type": "boolean"},
+                "original_utf8_bytes": {"type": "integer", "minimum": 0}
+              }
+            }
+          },
+          "sample_metadata": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "mode",
+              "algorithm",
+              "representative",
+              "population_non_null_count",
+              "returned_values",
+              "max_values",
+              "max_value_utf8_bytes",
+              "max_total_utf8_bytes",
+              "retained_utf8_bytes",
+              "truncated_value_count",
+              "skipped_for_total_bound"
+            ],
+            "properties": {
+              "mode": {"const": "bounded_sample"},
+              "algorithm": {"const": "first_n_non_null"},
+              "representative": {"const": false},
+              "population_non_null_count": {"type": "integer", "minimum": 0},
+              "returned_values": {"type": "integer", "minimum": 0},
+              "max_values": {"type": "integer", "minimum": 1},
+              "max_value_utf8_bytes": {"type": "integer", "minimum": 1},
+              "max_total_utf8_bytes": {"type": "integer", "minimum": 1},
+              "retained_utf8_bytes": {"type": "integer", "minimum": 0},
+              "truncated_value_count": {"type": "integer", "minimum": 0},
+              "skipped_for_total_bound": {"type": "integer", "minimum": 0}
+            }
+          }
+        }
+      }
+    }
+  }
+}

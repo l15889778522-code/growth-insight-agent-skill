@@ -1,8 +1,8 @@
-# GrowthInsight Agent Skill 需求文档 v1.0
+# 多Agent数据分析Skill 需求文档 v1.0
 
 ## 1. 项目定位
 
-GrowthInsight Agent Skill 是一个面向 Codex 的多 Agent 数据分析协作 skill。
+多Agent数据分析Skill 是一个面向 Codex 的多 Agent 数据分析协作 skill。
 
 它的目标不是建设 BI 平台、报表工厂或数据仓库，而是模拟真实数据分析团队的工作流：用户输入一个业务分析需求后，由多个数据分析角色分阶段协作，完成业务理解、指标设计、SQL 分析、洞察归因、可视化方案、质量评审和最终报告。
 
@@ -339,7 +339,7 @@ MYSQL_DATABASE
 正式 skill 建议结构：
 
 ```text
-growth-insight-agent/
+multi-agent-data-analysis-skill/
 ├─ SKILL.md
 ├─ agents/
 │  └─ openai.yaml

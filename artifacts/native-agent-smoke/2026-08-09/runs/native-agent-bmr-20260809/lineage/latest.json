@@ -1,0 +1,8 @@
+{
+  "content_identity": "706318387eec23113d391d3fd5dfd12fb641588a12dc6e61bddd27cd0ffdeca1",
+  "pointer_type": "metric_lineage",
+  "revision": 24,
+  "schema_version": "1.2",
+  "target_path": "lineage/revisions/revision-000024-706318387eec2311/metric-lineage.json",
+  "target_sha256": "706318387eec23113d391d3fd5dfd12fb641588a12dc6e61bddd27cd0ffdeca1"
+}

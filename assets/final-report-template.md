@@ -1,31 +1,24 @@
-# Final Data Analysis Report
+# 数据分析报告
 
-## 1. Business Background
+> Run、Review 决策和契约版本
 
-## 2. Analysis Objective
+## 执行摘要
 
-## 3. Scope and Non-Goals
+## 证据摘要
 
-## 4. Confirmed Metric Framework
+## 建议
 
-| Metric | Type | Formula | Business Meaning | Dimensions | Risks |
-| --- | --- | --- | --- | --- | --- |
+| ID | 建议 | 指标 | 证据 |
+|---|---|---|---|
 
-## 5. Data Sources and Schema Assumptions
+## 限制与风险
 
-## 6. SQL Analysis Plan
+## 后续行动
 
-## 7. Query Result Summary
+## 可审计附录
 
-## 8. Key Insights
-
-## 9. Root-Cause Hypotheses
-
-## 10. Visualization Plan
-
-## 11. Data Quality Risks
-
-## 12. Review Comments
-
-## 13. Next-Step Recommendations
-
+- 事实
+- 计算结果
+- 假设与待验证推断
+- 数据产物及 SHA-256
+- 指标血缘

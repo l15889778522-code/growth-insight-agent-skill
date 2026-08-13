@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "allOf": [
+    {"$ref": "../handoff.schema.json"},
+    {
+      "type": "object",
+      "properties": {
+        "role": {"const": "growth-business"},
+        "role_payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["business_context", "decision_question", "scope", "non_goals", "dimensions", "open_questions"],
+          "properties": {
+            "business_context": {"type": "string", "minLength": 1},
+            "decision_question": {"type": "string", "minLength": 1},
+            "scope": {"type": "array", "items": {"type": "string"}},
+            "non_goals": {"type": "array", "items": {"type": "string"}},
+            "dimensions": {"type": "array", "items": {"type": "string"}},
+            "open_questions": {"type": "array", "items": {"type": "string"}}
+          }
+        }
+      }
+    }
+  ]
+}

@@ -2,55 +2,45 @@
 
 ## Metric Types
 
-- North-star metric: primary business outcome.
-- Core metric: directly supports the analysis objective.
-- Process metric: explains movement through the user journey.
-- Guardrail metric: prevents misleading optimization.
-- Diagnostic metric: helps identify root causes.
+- `north-star`
+- `core`
+- `process`
+- `guardrail`
+- `diagnostic`
 
-## Required Metric Fields
+## Required Fields
 
-Use this table structure:
-
-| Metric | Type | Formula | Business Meaning | Dimensions | Tables | Fields | Required | Risks |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-
-## User Customization
-
-When the user adds a metric, normalize it into the table.
-
-If the user gives incomplete information, infer a reasonable formula and mark assumptions.
-
-If the metric cannot be computed from available schema:
-
-- Keep it in the framework.
-- Mark it as "not directly computable from current schema".
-- Ask whether to use a proxy metric or require additional data.
-
-## Metric Quality Rules
-
-Each metric should be:
-
-- Business relevant
-- Clearly defined
-- SQL-verifiable
-- Dimensionally decomposable
-- Time-window aware
-- Explicit about numerator and denominator
-- Explicit about exclusions such as test users or immature cohorts
-
-## Retention Example
-
-For D7 retention:
+Every metric contains:
 
 ```text
-D7 retention = users active on day 7 after signup / new users on signup day
+metric_id
+name
+type
+business_definition
+formula
+grain
+dimensions
+time_window
+field_dependencies
+status
+source
+owner
+data_risks
+version
 ```
 
-Rules:
+`status` is `exploratory | candidate | official`. `metric_id` is stable across revisions and `version` increases when the definition changes. `field_dependencies` must contain at least one concrete field or declared semantic-layer dependency, and `conflict_checks` must record either the checks performed or an explicit no-conflict result.
 
-- Exclude test users.
-- Exclude cohorts that have not had seven full days to mature.
-- Define whether day 7 means calendar date difference or 168-hour window.
-- Segment by signup channel, device, region, and signup date when available.
+For a revised Metrics attempt, a new metric starts at version 1, an unchanged metric keeps its version, and any changed definition increments exactly by one. Deleted IDs disappear from the new artifact; downstream artifacts that referenced them become stale.
 
+## User Edits
+
+`新增指标`、`修改指标`、`删除指标` and regeneration always create a new Metrics attempt. Validate unique IDs, complete formulas, field dependencies, and conflicts before showing the revision. Do not start SQL until the user confirms the final Metrics artifact.
+
+If a metric cannot be computed from available schema, keep it only with a visible dependency gap or propose a labeled proxy. Never invent support.
+
+## Quality
+
+Metrics must be business-relevant, SQL-verifiable, dimensionally decomposable, time-window aware, explicit about numerator and denominator, and explicit about exclusions.
+
+For D7 retention, define cohort maturity and whether day seven means calendar-day difference or a 168-hour window.

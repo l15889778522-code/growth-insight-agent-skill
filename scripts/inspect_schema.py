@@ -1,74 +1,55 @@
 #!/usr/bin/env python3
-"""Inspect SQLite or MySQL schema and print Markdown tables."""
+"""Inspect a configured read-only database and emit normalized schema metadata."""
 
 from __future__ import annotations
 
 import argparse
+import json
+from pathlib import Path
 
-from db_common import connect, load_config
-
-
-def inspect_sqlite(conn) -> None:
-    cursor = conn.cursor()
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
-    tables = [row[0] for row in cursor.fetchall()]
-    for table in tables:
-        print(f"## {table}\n")
-        print("| Field | Type | Not Null | Default | Primary Key |")
-        print("| --- | --- | --- | --- | --- |")
-        cursor.execute(f"PRAGMA table_info({quote_sqlite_identifier(table)})")
-        for row in cursor.fetchall():
-            print(f"| {row[1]} | {row[2]} | {bool(row[3])} | {row[4] or ''} | {bool(row[5])} |")
-        print()
+from contracts import CURRENT_CONTRACT_VERSION
+from db_common import data_source_fingerprint, get_adapter, load_config
+from runtime_common import atomic_write_json, atomic_write_text, utc_now
 
 
-def quote_sqlite_identifier(value: str) -> str:
-    return '"' + value.replace('"', '""') + '"'
-
-
-def inspect_mysql(conn) -> None:
-    with conn.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT table_name, column_name, column_type, is_nullable, column_key, column_default
-            FROM information_schema.columns
-            WHERE table_schema = DATABASE()
-            ORDER BY table_name, ordinal_position
-            """
-        )
-        rows = cursor.fetchall()
-
-    current = None
-    for row in rows:
-        table = row["table_name"]
-        if table != current:
-            current = table
-            print(f"\n## {table}\n")
-            print("| Field | Type | Nullable | Key | Default |")
-            print("| --- | --- | --- | --- | --- |")
-        print(
-            f"| {row['column_name']} | {row['column_type']} | {row['is_nullable']} | "
-            f"{row['column_key'] or ''} | {row['column_default'] or ''} |"
-        )
+def render_markdown(data: dict[str, object]) -> str:
+    lines = ["# Database Schema", "", f"- data_source_id: `{data['data_source_id']}`", f"- db_type: `{data['db_type']}`", ""]
+    for table in data["tables"]:
+        lines.extend([f"## {table['table']}", "", "| Field | Native type | Normalized type | Nullable | Primary key |", "|---|---|---|---|---|"])
+        for column in table["columns"]:
+            lines.append(f"| {column['name']} | {column['native_type']} | {column['normalized_type']} | {column['nullable']} | {column['primary_key']} |")
+        lines.append("")
+    return "\n".join(lines)
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Inspect database schema.")
-    parser.add_argument("--db", choices=["sqlite", "mysql"], help="Database type.")
+    parser = argparse.ArgumentParser(description="Inspect SQLite or MySQL schema through the read-only adapter.")
+    parser.add_argument("--db", choices=["sqlite", "mysql"])
+    parser.add_argument("--format", choices=["json", "markdown"], default="markdown")
+    parser.add_argument("--output", type=Path)
     args = parser.parse_args()
 
     config = load_config(args.db)
-    conn = connect(config)
-    try:
-        if config.db_type == "sqlite":
-            inspect_sqlite(conn)
-        elif config.db_type == "mysql":
-            inspect_mysql(conn)
-    finally:
-        conn.close()
+    adapter = get_adapter(config)
+    data = {
+        "schema_version": CURRENT_CONTRACT_VERSION,
+        "data_source_id": config.data_source_id,
+        "data_source_fingerprint": data_source_fingerprint(config),
+        "db_type": config.db_type,
+        "inspected_at": utc_now(),
+        "tables": adapter.inspect_schema(),
+    }
+    if args.format == "json":
+        output = json.dumps(data, ensure_ascii=False, indent=2)
+        if args.output:
+            atomic_write_json(args.output, data)
+    else:
+        output = render_markdown(data)
+        if args.output:
+            atomic_write_text(args.output, output)
+    print(output)
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

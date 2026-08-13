@@ -1,0 +1,145 @@
+{
+  "schema_version": "1.1",
+  "agent_contract_version": "1.1",
+  "run_id": "native-agent-bmr-20260809",
+  "stage_id": "s02-metrics",
+  "role": "growth-metrics",
+  "attempt": 2,
+  "stage_status": "BLOCKED",
+  "summary": "Metrics were drafted, but the stage is blocked by an unresolved contract-version conflict: the governing runtime instruction requires version 1.1 while the repository Agent TOML and requested run require version 1.2.",
+  "confirmed_decisions": [
+    "Define first_activation_rate and seven_day_retained_activation_rate.",
+    "Segment both metrics by signup_cohort_day and plan.",
+    "Use accounts as the business entity and Asia/Shanghai for cohort and event-time interpretation.",
+    "Do not generate or execute SQL."
+  ],
+  "conflicts": [
+    "Contract-version conflict: the governing runtime instruction requires schema_version and agent_contract_version 1.1, while the repository growth-metrics Agent TOML and requested run require 1.2. This conflict prevents PASS."
+  ],
+  "facts": [],
+  "calculations": [],
+  "assumptions": [
+    "The analysis unit is an account.",
+    "signup_cohort_day is derived from accounts.created_at in Asia/Shanghai.",
+    "The eligible population is non-test accounts created from 2026-07-01 through 2026-07-31."
+  ],
+  "hypotheses": [],
+  "evidence": [],
+  "metrics": [
+    {
+      "metric_id": "first_activation_rate",
+      "name": "First Activation Rate",
+      "version": 1
+    },
+    {
+      "metric_id": "seven_day_retained_activation_rate",
+      "name": "Seven-Day Retained Activation Rate",
+      "version": 1
+    }
+  ],
+  "data_artifacts": [],
+  "risks": [
+    "The qualifying event or event sequence for first activation is unresolved.",
+    "The event_name values representing core_action are unresolved.",
+    "The exact boundary of the seventh-day observation window is unresolved.",
+    "The business-time snapshot used for the plan dimension is unresolved.",
+    "The approved request and business-stage files contain malformed encoded string boundaries and could not be parsed as valid JSON; only unambiguous fields were used."
+  ],
+  "open_questions": [
+    "Which event or event sequence qualifies an account as first activated?",
+    "Which event_name values map to core_action?",
+    "Does day seven mean the seventh calendar day, a fixed elapsed-time interval, or a tolerance window?",
+    "Should plan be attributed at signup, first activation, or the retained-action observation time?"
+  ],
+  "required_next_inputs": [
+    "Approved first-activation event mapping.",
+    "Approved core_action event_name mapping.",
+    "Approved seventh-day window boundary.",
+    "Approved plan attribution rule.",
+    "Resolution of the 1.1 versus 1.2 contract-version conflict."
+  ],
+  "recommended_next_stage": null,
+  "lineage": [],
+  "role_payload": {
+    "metrics": [
+      {
+        "metric_id": "first_activation_rate",
+        "name": "First Activation Rate",
+        "type": "core",
+        "business_definition": "The share of eligible non-test accounts in a signup cohort that achieve first activation under the approved qualifying-event definition.",
+        "formula": "Distinct eligible accounts achieving first activation divided by distinct eligible accounts in the signup cohort.",
+        "grain": "signup_cohort_day by plan",
+        "dimensions": [
+          "signup_cohort_day",
+          "plan"
+        ],
+        "time_window": "Signup cohorts from 2026-07-01 through 2026-07-31 in Asia/Shanghai; activation observation window remains unresolved.",
+        "field_dependencies": [
+          "accounts.account_id",
+          "accounts.created_at",
+          "accounts.plan",
+          "accounts.is_test",
+          "events.account_id",
+          "events.event_name",
+          "events.event_time"
+        ],
+        "status": "candidate",
+        "source": "request.json and s01-business attempt-2 stage.json",
+        "owner": "Unassigned growth metric owner",
+        "data_risks": [
+          "First-activation qualifying events are not defined.",
+          "The allowed delay between signup and first activation is not defined.",
+          "Plan attribution timing is not defined."
+        ],
+        "version": 1
+      },
+      {
+        "metric_id": "seven_day_retained_activation_rate",
+        "name": "Seven-Day Retained Activation Rate",
+        "type": "north-star",
+        "business_definition": "The share of first-activated accounts that perform at least one qualifying core_action on day seven after first activation.",
+        "formula": "Distinct first-activated accounts with at least one core_action in the approved day-seven window divided by distinct first-activated accounts.",
+        "grain": "signup_cohort_day by plan",
+        "dimensions": [
+          "signup_cohort_day",
+          "plan"
+        ],
+        "time_window": "Day seven after each account's first activation in Asia/Shanghai; the exact day-seven boundary remains unresolved.",
+        "field_dependencies": [
+          "accounts.account_id",
+          "accounts.created_at",
+          "accounts.plan",
+          "accounts.is_test",
+          "events.account_id",
+          "events.event_name",
+          "events.event_time"
+        ],
+        "status": "candidate",
+        "source": "request.json user_metric and s01-business attempt-2 stage.json",
+        "owner": "Unassigned growth metric owner",
+        "data_risks": [
+          "The first-activation definition is unresolved.",
+          "The core_action event mapping is unresolved.",
+          "The exact day-seven observation boundary is unresolved.",
+          "Incomplete observation time may censor recently activated accounts.",
+          "Plan attribution timing is not defined."
+        ],
+        "version": 1
+      }
+    ],
+    "dependency_gaps": [
+      "First-activation event or event-sequence definition.",
+      "core_action to events.event_name mapping.",
+      "Day-seven observation-window boundary.",
+      "Plan attribution timestamp.",
+      "Contract-version resolution between runtime 1.1 and project 1.2."
+    ],
+    "conflict_checks": [
+      "Contract-version check: BLOCKED because the governing runtime instruction requires 1.1 while the project Agent TOML and requested run require 1.2.",
+      "Required-metric check: seven_day_retained_activation_rate is included with its stable requested metric_id.",
+      "Segmentation check: both metrics include signup_cohort_day and plan.",
+      "Definition-collision check: no conflicting approved metric formulas were found; missing activation, core_action, day-seven, and plan rules remain dependency gaps.",
+      "Common-metric mirror check: metric_id, name, and version match the role_payload metrics."
+    ]
+  }
+}

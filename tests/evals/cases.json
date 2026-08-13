@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.2",
+  "cases": [
+    {
+      "case_id": "full-diagnosis-sqlite",
+      "task_type": "complete diagnosis",
+      "request": "Explain the change in daily revenue and recommend next actions.",
+      "provided_inputs": ["business_question", "sqlite_snapshot", "schema"],
+      "required_roles": ["growth-business", "growth-metrics", "growth-sql", "growth-insight", "growth-visualization", "growth-review", "growth-report"],
+      "forbidden_roles": [],
+      "max_roles": 7
+    },
+    {
+      "case_id": "metric-design-custom-edit",
+      "task_type": "metric design",
+      "request": "Design activation KPIs, then add a user-defined seven-day retained activation metric.",
+      "provided_inputs": ["business_question", "product_definition"],
+      "required_roles": ["growth-business", "growth-metrics", "growth-review"],
+      "forbidden_roles": ["growth-sql", "growth-insight", "growth-visualization", "growth-report"],
+      "max_roles": 3
+    },
+    {
+      "case_id": "supplied-results-analysis",
+      "task_type": "analyze supplied result",
+      "request": "Analyze the supplied cohort result and prepare a decision-ready report.",
+      "provided_inputs": ["business_question", "result_file", "metric_definitions"],
+      "required_roles": ["growth-business", "growth-insight", "growth-visualization", "growth-review", "growth-report"],
+      "forbidden_roles": ["growth-sql"],
+      "max_roles": 5
+    },
+    {
+      "case_id": "missing-schema-fallback",
+      "task_type": "missing input",
+      "request": "Write executable SQL for conversion without a schema.",
+      "provided_inputs": ["business_question"],
+      "required_roles": [],
+      "forbidden_roles": ["growth-sql"],
+      "max_roles": 0
+    },
+    {
+      "case_id": "unsafe-sql-rejection",
+      "task_type": "SQL safety",
+      "request": "Run a multi-statement query containing an UPDATE after the SELECT.",
+      "provided_inputs": ["business_question", "schema", "database"],
+      "required_roles": ["growth-sql"],
+      "forbidden_roles": [],
+      "max_roles": 3
+    },
+    {
+      "case_id": "review-fail-rollback",
+      "task_type": "review rollback",
+      "request": "Review an analysis whose metric denominator conflicts with its SQL and recover it.",
+      "provided_inputs": ["metric_definitions", "sql", "query_result"],
+      "required_roles": ["growth-review"],
+      "forbidden_roles": ["growth-report"],
+      "max_roles": 4
+    },
+    {
+      "case_id": "interrupted-query-recovery",
+      "task_type": "execution recovery",
+      "request": "Recover an interrupted approved read-only query and continue without publishing partial output.",
+      "provided_inputs": ["business_question", "schema", "database", "approved_sql"],
+      "required_roles": ["growth-sql", "growth-review"],
+      "forbidden_roles": [],
+      "max_roles": 4,
+      "recovery_required": true
+    },
+    {
+      "case_id": "route-skip-unused-stages",
+      "task_type": "dynamic route skip",
+      "request": "Define and review a supplied KPI contract without querying data, diagnosing drivers, or drawing charts.",
+      "provided_inputs": ["business_question", "metric_definitions"],
+      "required_roles": ["growth-business", "growth-metrics", "growth-review"],
+      "forbidden_roles": ["growth-sql", "growth-insight", "growth-visualization", "growth-report"],
+      "max_roles": 3
+    }
+  ]
+}

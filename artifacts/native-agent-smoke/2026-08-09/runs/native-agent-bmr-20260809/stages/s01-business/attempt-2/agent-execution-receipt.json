@@ -1,0 +1,32 @@
+{
+  "agent_config_sha256": "786ab13ed0b28def7b42fd2fc4ec0e4bf63a49bfa94c515ed87d51a5766b3ef4",
+  "agent_id": "019fee9c-f66d-7c82-b82a-bf83eacae551",
+  "attempt": 2,
+  "capture_method": "codex_tool_result",
+  "completed_at": "2026-08-11T02:20:46.278Z",
+  "created_at": "2026-08-11T02:20:46.278Z",
+  "host_receipt": null,
+  "missing_metadata": [
+    "model",
+    "token_usage"
+  ],
+  "model": null,
+  "model_reasoning_effort": "medium",
+  "raw_response_path": "stages/s01-business/attempt-2/raw-response.txt",
+  "raw_response_sha256": "0946f5eef7b3a90ed75e581f6346b3c51b664a5ce529b67ecd985c2aa2b03296",
+  "receipt_id": "agent_receipt-6ecd65bbdd954410",
+  "role": "growth-business",
+  "run_id": "native-agent-bmr-20260809",
+  "schema_version": "1.2",
+  "stage_id": "s01-business",
+  "stage_json_path": "stages/s01-business/attempt-2/stage.json",
+  "stage_json_sha256": "7531ff7e15dc2db8ba325f0a39b1208e7249f7d5c045528244e87d6bff7041df",
+  "stage_semantic_sha256": "43c8abfb4ae0cc8b88458886b3ec01bdebdfb837bf04c85526e5747a41338ba6",
+  "started_at": "2026-08-11T02:17:58.488Z",
+  "token_usage": {
+    "input_tokens": null,
+    "output_tokens": null,
+    "total_tokens": null
+  },
+  "trust_level": "host_observed"
+}
