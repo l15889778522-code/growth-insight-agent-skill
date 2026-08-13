@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -342,6 +343,22 @@ def test_review_terminal_route_finalizes_with_immutable_summary(approved_run) ->
     summary = next(item for item in state["artifacts"] if item.get("kind") == "run_summary")
     summary_value = json.loads((run_dir / summary["path"]).read_text(encoding="utf-8"))
     assert summary_value["completion_kind"] == "review_terminal"
+    assert audit_run(run_dir) == []
+
+
+def test_review_terminal_finalize_accepts_relative_run_dir(approved_run) -> None:
+    run_dir, _ = approved_run(["growth-business", "growth-review"])
+    _run_stage(run_dir, "growth-business", "s01-business")
+    approve_pending(run_dir, "stage", "relative-terminal-business")
+    _run_stage(run_dir, "growth-review", "s02-review")
+    approve_pending(run_dir, "stage", "relative-terminal-review")
+
+    relative_run_dir = Path(os.path.relpath(run_dir, Path.cwd()))
+    finalize_run(relative_run_dir)
+
+    state = load_state(run_dir)
+    assert state["status"] == "completed"
+    assert state["completion_kind"] == "review_terminal"
     assert audit_run(run_dir) == []
 
 

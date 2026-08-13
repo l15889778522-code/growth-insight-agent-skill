@@ -3413,6 +3413,7 @@ def publish_final_report(run_dir: Path) -> dict[str, Any]:
 
 
 def finalize_run(run_dir: Path) -> dict[str, Any]:
+    run_dir = run_dir.resolve()
     with RunLock(run_dir):
         state = load_state(run_dir, for_update=True)
         if state["status"] != "finalizing":

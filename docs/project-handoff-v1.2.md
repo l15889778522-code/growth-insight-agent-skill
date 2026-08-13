@@ -553,3 +553,30 @@ v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布�
 2. 用户下一次明确指定某个模式后，只执行该模式。
 3. 若要形成三模式比较，后续模式必须复用同一冻结输入和等量重复次数。
 4. 在三种模式同案例覆盖一致前，不发布优劣、质量或成本结论。
+
+### 8.4 模式 3：受控 Skill 修复后重跑
+
+总体状态：本案例 `DONE`；模式覆盖仍为 `PARTIAL`；三模式比较结论仍为 `NOT_STARTED`。
+
+- 修复前运行：`eval-controlled-skill-metric-design-custom-edit-r01`。
+- 修复前状态：`finalizing`，`completion_kind=null`；Business、Metrics、Review 均已批准，但终止器错误地强制要求 Report，因此没有完成。
+- 修复后运行：`eval-controlled-skill-metric-design-custom-edit-r02`。
+- 修复后状态：`completed`，`completion_kind=review_terminal`，`revision=39`，`audit.errors=[]`。
+- 修复后仍使用相同冻结请求和路由：请求 SHA-256 为 `bf8fb064db57b37aafdbbaf8788dc87d976171c8af3b1fb8a117dc08acaae572`，路由 SHA-256 为 `4f747cc20eae26666b83f4dc82082d308676263b8c7acdfb6c224e690d461ea0`。
+- 修复后未生成 Report，这是正确行为；该案例的合法终点是批准 Review，而不是为了满足旧终止器伪造 Report。
+- 运行摘要、批准记录、证据哈希、Review 输入包和审计链均保留；中途的 Metrics 校验失败、Review 初次校验失败和中断尝试也保留在 attempt history 中。
+- 修复后五项自动规则均通过：`sql_safe`、`schema_valid`、`evidence_resolvable`、`no_gate_bypass`、`recovery_success`。
+- 新评测记录为 `tests/evals/results/controlled-skill/metric-design-custom-edit/repeat-01-fixed.json`；没有新的盲评，因此 `quality_scores=null`，不能据此宣称质量提升。
+- 前后对照报告为 `tests/evals/results/controlled-skill/metric-design-custom-edit/repeat-01-fixed-comparison.md`。
+
+### 8.5 本轮代码与回归验证
+
+- `DONE`：Review-terminal、Report-terminal、非法终止、中断恢复、Metrics workbench 导出/导入/精确修订和 Review 输入继承测试已加入 `tests/test_runctl.py`。
+- `DONE`：补充了相对路径调用 `finalize_run` 的回归测试，修复 CLI 路径解析导致的最终摘要写入失败。
+- `DONE`：完整离线回归为 `146 passed, 2 skipped`；跳过项仍是显式 opt-in 的外部环境测试。
+- `DONE`：`git diff --check` 和 Python 编译检查通过。
+- `NOT_STARTED`：没有启动下一批真实 Agent 评测，没有进行新的盲评，也没有形成三模式优劣、质量或成本结论。
+
+### 8.6 下一批评测建议
+
+暂不扩展大批量用例。下一次只运行一个案例：`review-fail-rollback`，验证 Review 失败时能否定位最早责任阶段、使下游产物失效并完成精确返工。该案例通过后，再运行 `route-skip-unused-stages`，验证第二条最短路线。两者都完成后，再决定是否进入 SQL 或真实数据库案例。
