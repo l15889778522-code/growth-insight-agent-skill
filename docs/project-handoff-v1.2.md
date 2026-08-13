@@ -588,6 +588,7 @@ v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布�
 ### 发布状态
 
 - `DONE`：PR #2 已合并到 `main`，合并提交为 `9af6098abf26a81a7e45ea25e173a27bb0735b81`。
+- `DONE`：整理提交通过 PR #3 已合并到 `main`，合并提交为 `7aa656b187679449bdb4980f4b62e4b6d9b5a311`。
 - `DONE`：GitHub Release `v1.2.2` 已发布：[v1.2.2 Release](https://github.com/l15889778522-code/growth-insight-agent-skill/releases/tag/v1.2.2)。
 - `DONE`：工作分支为 `agent/native-free-eval`，远端最新提交为 `8b35a1e6825979778506efb0f43965018686955c`。
 - `DONE`：GitHub Actions 运行 `31678867821` 的 9 项 Ubuntu、Windows、全新安装和 MySQL 8.4 检查全部通过。
@@ -614,5 +615,5 @@ v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布�
 
 1. 在管理员 PowerShell 中删除被 ACL 保护的测试生成目录。
 2. 确认工作区只保留源代码、文档、评测证据和有意保留的发布元数据。
-3. 将本次整理提交合并到 `main`。
+3. `DONE`：本次整理提交已合并到 `main`；后续只需在管理员 PowerShell 中完成本地 ACL 保护目录清理。
 4. 发布与工作区记录一致后，再开始 v1.3。
