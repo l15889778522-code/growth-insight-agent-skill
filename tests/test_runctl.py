@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 import pytest
@@ -346,15 +345,15 @@ def test_review_terminal_route_finalizes_with_immutable_summary(approved_run) ->
     assert audit_run(run_dir) == []
 
 
-def test_review_terminal_finalize_accepts_relative_run_dir(approved_run) -> None:
+def test_review_terminal_finalize_accepts_relative_run_dir(approved_run, monkeypatch) -> None:
     run_dir, _ = approved_run(["growth-business", "growth-review"])
     _run_stage(run_dir, "growth-business", "s01-business")
     approve_pending(run_dir, "stage", "relative-terminal-business")
     _run_stage(run_dir, "growth-review", "s02-review")
     approve_pending(run_dir, "stage", "relative-terminal-review")
 
-    relative_run_dir = Path(os.path.relpath(run_dir, Path.cwd()))
-    finalize_run(relative_run_dir)
+    monkeypatch.chdir(run_dir.parent)
+    finalize_run(Path(run_dir.name))
 
     state = load_state(run_dir)
     assert state["status"] == "completed"
