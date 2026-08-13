@@ -580,3 +580,39 @@ v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布�
 ### 8.6 下一批评测建议
 
 暂不扩展大批量用例。下一次只运行一个案例：`review-fail-rollback`，验证 Review 失败时能否定位最早责任阶段、使下游产物失效并完成精确返工。该案例通过后，再运行 `route-skip-unused-stages`，验证第二条最短路线。两者都完成后，再决定是否进入 SQL 或真实数据库案例。
+
+## 8.7 当前发布与工作区整理状态（2026-08-13）
+
+本节是当前发布记录。若前文冻结记录与本节冲突，以本节为准。
+
+### 发布状态
+
+- `DONE`：PR #2 已合并到 `main`，合并提交为 `9af6098abf26a81a7e45ea25e173a27bb0735b81`。
+- `DONE`：GitHub Release `v1.2.2` 已发布：[v1.2.2 Release](https://github.com/l15889778522-code/growth-insight-agent-skill/releases/tag/v1.2.2)。
+- `DONE`：工作分支为 `agent/native-free-eval`，远端最新提交为 `8b35a1e6825979778506efb0f43965018686955c`。
+- `DONE`：GitHub Actions 运行 `31678867821` 的 9 项 Ubuntu、Windows、全新安装和 MySQL 8.4 检查全部通过。
+- `DONE`：最近一次本地完整回归记录为 `146 passed, 2 skipped`；本次整理没有启动新的模型评测。
+- `UNCHANGED`：`VERSION=1.2` 仍是运行合同版本；`v1.2.2` 是补丁发布，不引入新的运行合同版本。
+
+### 评测汇总状态
+
+- `DONE`：固定 Skill 修复后记录加入结果目录后，评测汇总已重新生成。
+- `DONE`：修复前失败的受控 Skill 记录作为历史证据保留，修复后的 Review-terminal 记录作为对照证据保留。
+- `DEFERRED`：不宣称完整三模式质量结论。修复后受控 Skill 记录没有新的盲评质量分，早期原生自由编排运行的模型身份也无法完全验证。
+- `DEFERRED`：下一批评测必须由用户明确批准，并在额度受限期间保持小规模。
+
+### 工作区整理状态
+
+- `DONE`：已增加 `.test-tmp-*/` 和 `tests/.artifacts/` 的 Git 忽略规则。
+- `DONE`：`.coverage` 已删除。
+- `DONE`：可访问的 `stages/`、`multi-agent-data-analysis-r02/` 和 `scripts/__pycache__/` 已删除。
+- `BLOCKED`：剩余 `.test-tmp-*`、`tests/.artifacts` 和 `.pytest_cache` 生成目录在本次 Codex 会话中因 Windows 拒绝访问且当前会话没有管理员令牌，未能物理删除。它们是测试生成物，不是源文件；下一次应在管理员 PowerShell 中清理后再做全新工作区检查。
+- `PRESERVE`：`multi-agent-data-analysis-runs/` 保存正式运行审计证据，不得删除。
+- `PRESERVE`：`.venv/` 是本地运行环境，不属于本次清理目标。
+
+### 发布后续顺序
+
+1. 在管理员 PowerShell 中删除被 ACL 保护的测试生成目录。
+2. 确认工作区只保留源代码、文档、评测证据和有意保留的发布元数据。
+3. 将本次整理提交合并到 `main`。
+4. 发布与工作区记录一致后，再开始 v1.3。
