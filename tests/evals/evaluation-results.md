@@ -1,12 +1,12 @@
 # Multi-Agent Data Analysis Evaluation
 
-Generated: `2026-08-13T03:48:34.302Z`
+Generated: `2026-08-13T08:14:23.884Z`
 
 | Mode | Coverage | Rule score | Applicable rules | Quality score | Gate bypasses | Mean elapsed ms | Mean tokens |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | single-codex | 1/8 | 1.0 | 2/6 | 0.961 | N/A | 256399.0 | N/A |
 | codex-native-free | 1/8 | 1.0 | 2/6 | 0.949 | N/A | 262402.0 | N/A |
-| controlled-skill | 0/8 | N/A | 0/0 | N/A | N/A | N/A | N/A |
+| controlled-skill | 1/8 | 1.0 | 6/6 | N/A | 0 | 1604734.0 | N/A |
 
 Compare quality and cost only at equal case and measurement coverage; missing live runs and unmeasured blind-review or Token fields are not scored as failures or successes.
 
@@ -29,6 +29,7 @@ Compare quality and cost only at equal case and measurement coverage; missing li
 - `codex-native-free` / `interrupted-query-recovery`: not_run
 - `codex-native-free` / `route-skip-unused-stages`: not_run
 - `controlled-skill` / `full-diagnosis-sqlite`: not_run
+- `controlled-skill` / `metric-design-custom-edit`: completed
 - `controlled-skill` / `metric-design-custom-edit`: incomplete
 - `controlled-skill` / `supplied-results-analysis`: not_run
 - `controlled-skill` / `missing-schema-fallback`: not_run

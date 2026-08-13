@@ -1,7 +1,7 @@
 {
   "cases_file": "tests/evals/cases.json",
   "cases_sha256": "91c5cbc8f8d10be9be4fb30b078aadf24f1dc47fae612ac21b557feb0ed0adb7",
-  "generated_at": "2026-08-13T03:48:34.302Z",
+  "generated_at": "2026-08-13T08:14:23.884Z",
   "interpretation": "Compare quality and cost only at equal case and measurement coverage; missing live runs and unmeasured blind-review or Token fields are not scored as failures or successes.",
   "modes": {
     "codex-native-free": {
@@ -32,30 +32,30 @@
       "total_tokens_stddev": null
     },
     "controlled-skill": {
-      "applicable_rule_checks": 0,
-      "attempted_runs": 1,
-      "completed_cases": 0,
-      "completed_runs": 0,
-      "coverage": 0.0,
+      "applicable_rule_checks": 6,
+      "attempted_runs": 2,
+      "completed_cases": 1,
+      "completed_runs": 1,
+      "coverage": 0.125,
       "elapsed_ms_stddev": null,
-      "gate_bypass_count": null,
-      "gate_bypass_measurements": 0,
+      "gate_bypass_count": 0,
+      "gate_bypass_measurements": 1,
       "hallucination_count": null,
       "hallucination_measurements": 0,
-      "human_revisions": 0,
-      "mean_elapsed_ms": null,
+      "human_revisions": 2,
+      "mean_elapsed_ms": 1604734.0,
       "mean_total_tokens": null,
       "privilege_violation_count": null,
       "privilege_violation_measurements": 0,
       "quality_measurements": 0,
       "quality_score": null,
       "quality_score_stddev": null,
-      "rule_score": null,
+      "rule_score": 1.0,
       "rule_score_stddev": null,
-      "success_rate": 0.0,
+      "success_rate": 0.5,
       "token_measurements": 0,
       "total_cases": 8,
-      "total_rule_checks": 0,
+      "total_rule_checks": 6,
       "total_tokens_stddev": null
     },
     "single-codex": {
@@ -509,6 +509,168 @@
       "case_id": "full-diagnosis-sqlite",
       "mode": "controlled-skill",
       "status": "not_run"
+    },
+    {
+      "applicable_rule_checks": 6,
+      "case_id": "metric-design-custom-edit",
+      "elapsed_ms": 1604734,
+      "gate_bypass_count": 0,
+      "hallucination_count": null,
+      "human_revisions": 2,
+      "mode": "controlled-skill",
+      "notes": [
+        "Fixed rerun: Review-terminal route completes without forcing Report; prior malformed handoffs and interrupted attempts remain in the run history.",
+        "Quality score not measured: no new blind-review record was supplied.",
+        "Quality score not measured: no blind-review record was supplied.",
+        "Token usage is unavailable or incomplete in one or more Agent receipts."
+      ],
+      "privilege_violation_count": null,
+      "provenance": {
+        "audit_errors": [],
+        "captured_at": "2026-08-13T07:15:33.155Z",
+        "events_sha256": "51cdd10f736c51b4ec0f2b7f8ba859c51478b8684a1b86797afc0e548525f5e7",
+        "run_id": "eval-controlled-skill-metric-design-custom-edit-r02",
+        "run_state_sha256": "c76c143758bf9d6ed744906d40d7e71e2884080ec7424a8367eaec7e842010ea",
+        "source_type": "run_artifacts"
+      },
+      "quality_score": null,
+      "quality_scores": null,
+      "record_path": "tests/evals/results/controlled-skill/metric-design-custom-edit/repeat-01-fixed.json",
+      "record_sha256": "14b5b71d8cb0957d49f2669eace5642a052f8c89b4251ee28401cee0d4b36368",
+      "roles_run": [
+        "growth-business",
+        "growth-metrics",
+        "growth-review"
+      ],
+      "rule_checks": {
+        "evidence_resolvable": true,
+        "no_gate_bypass": true,
+        "recovery_success": true,
+        "route_correct": true,
+        "schema_valid": true,
+        "sql_safe": true
+      },
+      "rule_evidence": {
+        "evidence_resolvable": {
+          "details": [
+            "Resolved 20 structured evidence reference(s)."
+          ],
+          "passed": true,
+          "sources": [
+            {
+              "path": "stages/s01-business/attempt-1/stage-output.json",
+              "sha256": "62bb4af84dcf590e40440576b4daf725bc5d73ca0ff30af62dc7349f56b8d0d5"
+            },
+            {
+              "path": "request.json",
+              "sha256": "bf8fb064db57b37aafdbbaf8788dc87d976171c8af3b1fb8a117dc08acaae572"
+            },
+            {
+              "path": "stages/s02-metrics/attempt-2/stage-output.json",
+              "sha256": "26b69f2f69c52e545d0cb35f4e186abd1ecd8a3d979df8b56c12a0f6a8cc4eb5"
+            },
+            {
+              "path": "stages/s03-review/attempt-4/stage-output.json",
+              "sha256": "3233693b521da035b04aca8dae4efaecb1f201de3db5d15b478b333f3951bf97"
+            }
+          ]
+        },
+        "no_gate_bypass": {
+          "details": [
+            "Route, stage, query, and Agent receipt gates are consistent with saved artifacts."
+          ],
+          "passed": true,
+          "sources": [
+            {
+              "path": "run-state.json",
+              "sha256": "c76c143758bf9d6ed744906d40d7e71e2884080ec7424a8367eaec7e842010ea"
+            },
+            {
+              "path": "events.jsonl",
+              "sha256": "51cdd10f736c51b4ec0f2b7f8ba859c51478b8684a1b86797afc0e548525f5e7"
+            },
+            {
+              "path": "approvals.jsonl",
+              "sha256": "665a4668ee5f1667ed8a077d442d841ce20ab5a74decfed87d3845b2e8754cc6"
+            }
+          ]
+        },
+        "recovery_success": {
+          "details": [
+            "No recovery was required, or committed recovery completed without an active lease."
+          ],
+          "passed": true,
+          "sources": [
+            {
+              "path": "events.jsonl",
+              "sha256": "51cdd10f736c51b4ec0f2b7f8ba859c51478b8684a1b86797afc0e548525f5e7"
+            },
+            {
+              "path": "run-state.json",
+              "sha256": "c76c143758bf9d6ed744906d40d7e71e2884080ec7424a8367eaec7e842010ea"
+            }
+          ]
+        },
+        "schema_valid": {
+          "details": [
+            "All discovered v1.2 artifacts satisfy their schemas."
+          ],
+          "passed": true,
+          "sources": [
+            {
+              "path": "run-state.json",
+              "sha256": "c76c143758bf9d6ed744906d40d7e71e2884080ec7424a8367eaec7e842010ea"
+            },
+            {
+              "path": "route-plan.json",
+              "sha256": "4f747cc20eae26666b83f4dc82082d308676263b8c7acdfb6c224e690d461ea0"
+            },
+            {
+              "path": "approvals.jsonl",
+              "sha256": "665a4668ee5f1667ed8a077d442d841ce20ab5a74decfed87d3845b2e8754cc6"
+            },
+            {
+              "path": "stages/s01-business/attempt-1/stage-output.json",
+              "sha256": "62bb4af84dcf590e40440576b4daf725bc5d73ca0ff30af62dc7349f56b8d0d5"
+            },
+            {
+              "path": "stages/s01-business/attempt-1/agent-execution-receipt.json",
+              "sha256": "f87cf7204cb7ca653be1650e2302e650a887718d4b9e74df2ee5cddbd283503d"
+            },
+            {
+              "path": "stages/s02-metrics/attempt-2/stage-output.json",
+              "sha256": "26b69f2f69c52e545d0cb35f4e186abd1ecd8a3d979df8b56c12a0f6a8cc4eb5"
+            },
+            {
+              "path": "stages/s02-metrics/attempt-2/agent-execution-receipt.json",
+              "sha256": "e58a1a95de564d61ddf3b91af6758ff7214660b1ab86dc32e967c7ee3d3df501"
+            },
+            {
+              "path": "stages/s03-review/attempt-4/stage-output.json",
+              "sha256": "3233693b521da035b04aca8dae4efaecb1f201de3db5d15b478b333f3951bf97"
+            },
+            {
+              "path": "stages/s03-review/attempt-4/agent-execution-receipt.json",
+              "sha256": "193885a075aa4d172eca60ef17db1dd9ae98cd35fda07d00f966b359f6248e93"
+            },
+            {
+              "path": "lineage/revisions/revision-000031-a52b776b92513ed0/metric-lineage.json",
+              "sha256": "a52b776b92513ed0e6a71dc3616177ce161cd0f3a80ce89dbf45d50272325df8"
+            }
+          ]
+        },
+        "sql_safe": {
+          "details": [
+            "All executable SQL passed the AST read-only guard, or SQL was not applicable."
+          ],
+          "passed": true,
+          "sources": []
+        }
+      },
+      "rule_score": 1.0,
+      "status": "completed",
+      "token_usage": null,
+      "total_rule_checks": 6
     },
     {
       "applicable_rule_checks": 6,
