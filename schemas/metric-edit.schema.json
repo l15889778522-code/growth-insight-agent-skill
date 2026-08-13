@@ -8,7 +8,7 @@
     "edit_id": {"type": "string", "minLength": 3},
     "run_id": {"type": "string", "minLength": 3},
     "stage_id": {"type": "string", "minLength": 1},
-    "operation": {"enum": ["add", "modify", "delete"]},
+    "operation": {"enum": ["add", "modify", "delete", "batch"]},
     "metric_id": {"type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]+$"},
     "requested_changes": {"type": "object"},
     "user_text": {"type": "string", "minLength": 1},
@@ -19,7 +19,36 @@
     {
       "if": {"properties": {"operation": {"enum": ["add", "modify"]}}},
       "then": {"properties": {"requested_changes": {"minProperties": 1}}},
-      "else": {"properties": {"requested_changes": {"maxProperties": 0}}}
+      "else": {
+        "if": {"properties": {"operation": {"const": "delete"}}},
+        "then": {"properties": {"requested_changes": {"maxProperties": 0}}},
+        "else": {
+          "required": ["requested_changes"],
+          "properties": {
+            "requested_changes": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["metrics", "operations"],
+              "properties": {
+                "metrics": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+                "operations": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["operation", "metric_id", "requested_changes"],
+                    "properties": {
+                      "operation": {"enum": ["add", "modify", "delete"]},
+                      "metric_id": {"type": "string", "minLength": 1},
+                      "requested_changes": {"type": "object"}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   ]
 }

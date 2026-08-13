@@ -44,7 +44,7 @@
       "properties": {
         "edit_id": {"type": "string", "minLength": 3},
         "stage_id": {"type": "string", "minLength": 1},
-        "operation": {"enum": ["add", "modify", "delete"]},
+        "operation": {"enum": ["add", "modify", "delete", "batch"]},
         "metric_id": {"type": "string", "minLength": 1},
         "base_artifact_sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
         "edit_path": {"type": "string", "minLength": 1},
@@ -166,6 +166,7 @@
         "completed"
       ]
     },
+    "completion_kind": {"type": ["string", "null"], "enum": ["review_terminal", "report", null]},
     "runtime": {
       "type": "object",
       "additionalProperties": false,
@@ -280,7 +281,7 @@
   "allOf": [
     {
       "if": {"properties": {"schema_version": {"const": "1.2"}}},
-      "then": {"required": ["execution_leases"]}
+      "then": {"required": ["execution_leases", "completion_kind"]}
     }
   ]
 }

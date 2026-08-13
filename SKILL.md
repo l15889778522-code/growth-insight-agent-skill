@@ -94,7 +94,7 @@ For the single pending role:
 
 For every role, including Report, show the stage summary and report link, ask for a stage command, and end the response. Do not start another role in the same response that first displays a stage result.
 
-After the Report artifact is explicitly approved, enter `finalizing`, rebuild lineage, validate required chart artifacts, call `<skill-root>/scripts/runctl.py publish-final-report`, then call `<skill-root>/scripts/runctl.py finalize`. Link the immutable versioned final report and approved stage artifacts.
+After a Report artifact is explicitly approved, enter `finalizing`, rebuild lineage, validate required chart artifacts, call `<skill-root>/scripts/runctl.py publish-final-report`, then call `<skill-root>/scripts/runctl.py finalize`. A route that ends at an approved `growth-review` may also enter `finalizing` and call `finalize` without publishing a Report; this creates an immutable `review_terminal` run summary and never creates final-report artifacts.
 
 If a validated output is `BLOCKED` or `FAIL`, show its missing input or failure reason and stop at that boundary. It is not eligible for stage approval.
 
@@ -124,6 +124,8 @@ At a Metrics result, additionally accept:
 
 Translate every edit into a complete `metric-edit.schema.json` object, show the normalized operation to the user, and register it with `<skill-root>/scripts/runctl.py metric-edit`. Rerun `growth-metrics` against that exact edit and current metric version. Require stable `metric_id`, incremented versions, unique IDs, complete field dependencies, conflict checks, and exact application of requested fields. Do not start SQL until the revised Metrics artifact is explicitly approved.
 
+For convenient human editing, export the current Metrics artifact with `<skill-root>/scripts/runctl.py metrics-workbench-export --run-dir <run> --output <file>.toml`. Edit only the `[[metrics]]` tables, keep `metric_id` stable, and import with `<skill-root>/scripts/runctl.py metrics-workbench-import --run-dir <run> --workbench-file <file>.toml`. The runtime validates IDs, names, required fields, dependencies, and computes a hash-bound add/modify/delete diff. It normalizes changed versions to the next version and requires the next Metrics response to match the imported metric list exactly.
+
 ## Query Gate
 
 The SQL Agent only proposes SQL. It never connects to a database.
@@ -143,6 +145,7 @@ Any SQL, parameter, data source, dialect, timeout, row-limit, or result-byte-lim
 ## Review Rules
 
 - Report requires an approved Review result of `PASS` or `PASS_WITH_RISKS`.
+- A Review-terminal route requires an approved Review result of `PASS` or `PASS_WITH_RISKS` and completes without Report publication.
 - `FAIL` must identify the earliest rollback stage and required fixes. `record-stage` creates a hash-bound `rollback-plan.json`; show it and wait for explicit rollback approval before revising that stage. Do not start Report.
 - Preserve all `PASS_WITH_RISKS` caveats in Report.
 - Require Review to copy the latest registered query-manifest quality warnings exactly; the deterministic runtime rejects omissions or paraphrases.
