@@ -83,13 +83,13 @@
 | 草稿 PR | `#1 Implement auditable data analysis skill v1.2` | `PARTIAL` |
 | PR 地址 | `https://github.com/l15889778522-code/growth-insight-agent-skill/pull/1` | `DONE` |
 | v1.2 主提交 | `a5e42a3 Implement auditable data analysis skill v1.2` | `DONE` |
-| 最新 v1.2.1 收尾实现提交 | `2b18c38 Close deterministic v1.2.1 release gates` | `DONE` |
-| 本地与远端分支 | 本地已生成收尾实现和本文档更新，须在本次任务推送后复核远端 | `PARTIAL` |
+| 最新 v1.2.1 收尾实现提交 | `83f2274 Harden interrupted MySQL streams` | `DONE` |
+| 本地与远端分支 | 本地已完成第三轮 MySQL 修复，须在本次推送后复核远端 | `PARTIAL` |
 | PR 合并 | 尚未合并 | `BLOCKED` |
 | `v1.2.1` 标签 | 尚未创建 | `BLOCKED` |
 | GitHub Release | 尚未创建 | `BLOCKED` |
 
-v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布收尾以 `2b18c38` 为实现基线。Windows/Ubuntu 新矩阵、GitHub 临时 MySQL 8.4 和跨平台干净安装任务须在本次推送后取得远端结果；第二台 Codex 验收尚未执行，真实三模式评测已按用户要求暂缓，因此当前仍不能描述为正式发布。
+v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布收尾以 `83f2274` 为最新实现基线。Windows/Ubuntu 六版本矩阵与两套干净安装已在 Actions run `31585533177` 全部通过；MySQL 8.4 已真实启动并执行到超时场景，但完整发布门仍需第三轮确认。第二台 Codex 验收尚未执行，真实三模式评测已按用户要求暂缓，因此当前仍不能描述为正式发布。
 
 ### 2.2 版本语义
 
@@ -182,9 +182,9 @@ v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布�
 | 能力 | 代码存在 | 自动测试 | 真实环境 | 结论 |
 |---|---|---|---|---|
 | SQLite 只读查询 | `DONE` | `DONE` | `DONE`（本地文件数据库） | `DONE` |
-| MySQL 连接器 | `DONE` | `DONE` | GitHub 临时 MySQL 任务已实现、待远端运行 | `PARTIAL` |
+| MySQL 连接器 | `DONE` | `DONE` | MySQL 8.4 已真实运行，完整门待第三轮 | `PARTIAL` |
 | SQL AST 只读校验 | `DONE` | `DONE` | `DONE` | `DONE` |
-| TLS 和服务器身份指纹 | `DONE` | `DONE`（mock/合同和 opt-in 测试） | 待远端 MySQL 8.4 | `PARTIAL` |
+| TLS 和服务器身份指纹 | `DONE` | `DONE`（mock/合同和 opt-in 测试） | MySQL 8.4 已验证 | `DONE` |
 | 流式查询和限制 | `DONE` | `DONE` | `PARTIAL` | `PARTIAL` |
 
 已实现细节：
@@ -204,7 +204,8 @@ v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布�
 
 真实验证缺口：
 
-- MySQL 发布门代码和 CI 服务已经存在，但在本文件此次更新时尚未取得 GitHub Actions 的真实 MySQL 运行结果。
+- Actions run `31585533177` 已真实启动 MySQL 8.4.11，成功完成 TLS 只读账号、2505 行 fixture、物理身份指纹、Decimal/Unicode、行数截断、结果字节拒绝和写入拒绝；随后超时用例因测试本身使用被安全层禁止的 `SLEEP()` 而失败。
+- `83f2274` 保持 `SLEEP()` 禁止规则不变，改用管理员写锁验证普通 `SELECT` 超时，并用大 payload 流式查询验证中途断连；该修复待第三轮远端结果。
 - 断连后的连接器重连由真实 opt-in 测试覆盖；执行租约的中断、abort 和重新申请仍由离线确定性测试覆盖，两类证据不能混写。
 - 因此不能将 MySQL 描述为真实集成完成；发布状态保持 `PARTIAL/BLOCKED`。
 
@@ -276,17 +277,17 @@ v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布�
 
 | 证据 | 当前结果 | 状态 |
 |---|---|---|
-| 本地离线测试 | `136 passed, 2 skipped`，2026-08-12 | `DONE` |
+| 本地离线测试 | `137 passed, 2 skipped`，2026-08-13 | `DONE` |
 | 跳过测试 | 两个真实 MySQL opt-in 发布门；仅在 `RUN_MYSQL_INTEGRATION=1` 时运行 | `PARTIAL` |
 | Windows 安装器专项 | `10 passed` | `DONE` |
 | Windows 全新中文目录安装生命周期 | 依赖、预检、verify、卸载和残留检查全部通过 | `DONE` |
 | 分支覆盖率 | 约 `75%` | `PARTIAL` |
-| Ubuntu Python 3.11/3.12/3.13 | 旧提交通过；新收尾提交待远端复跑 | `PARTIAL` |
-| Windows Python 3.11/3.12/3.13 | .NET SHA-256 修复和本地专项通过；待远端复跑 | `PARTIAL` |
-| GitHub 干净安装 Ubuntu/Windows | 工作流已实现，待远端运行 | `PARTIAL` |
-| GitHub MySQL 8.4 | 工作流和测试已实现，待远端运行 | `PARTIAL` |
+| Ubuntu Python 3.11/3.12/3.13 | Actions run `31585533177` 全部通过 | `DONE` |
+| Windows Python 3.11/3.12/3.13 | Actions run `31585533177` 全部通过 | `DONE` |
+| GitHub 干净安装 Ubuntu/Windows | Actions run `31585533177` 两套全部通过 | `DONE` |
+| GitHub MySQL 8.4 | 真实环境与前置断言通过；中断场景修复待第三轮 | `PARTIAL` |
 
-原 Windows 失败由 `Get-FileHash` 在 runner PowerShell 中不可用造成。`2b18c38` 已改用 .NET `System.Security.Cryptography.SHA256`，本地 PowerShell 安装/预检专项已通过；只有远端三版本矩阵也通过后，才能将该阻塞项改为完整 `DONE`。
+原 Windows 失败由 `Get-FileHash` 在 runner PowerShell 中不可用造成。`2b18c38` 改用 .NET `System.Security.Cryptography.SHA256` 后，Actions run `31585533177` 的 Windows Python 3.11、3.12、3.13 与 Windows 干净安装全部通过，该阻塞项已经关闭。
 
 #### 评测基础设施
 
@@ -307,11 +308,11 @@ v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布�
 优先级：最高，完成前不得开始 v1.3。
 
 1. `DONE`：已使用兼容 Windows PowerShell 的 .NET SHA-256 文件计算函数替换两处 `Get-FileHash`，本地专项通过。
-2. `PARTIAL`：Windows、Ubuntu 上 Python 3.11、3.12、3.13 新矩阵等待本次推送后的远端结果。
+2. `DONE`：Windows、Ubuntu 上 Python 3.11、3.12、3.13 已在 Actions run `31585533177` 全部通过。
 3. `DONE`：CI 已调整为 PR 检查加 `main` push，功能分支 push 不再与 PR 同时生成两套矩阵。
-4. `PARTIAL`：全新中文目录 Windows 本地生命周期已通过；GitHub 干净检出的 Ubuntu/Windows 独立任务已实现，待远端结果。
-5. `PARTIAL`：GitHub Actions 临时 MySQL 8.4 服务、一次性 Schema、测试数据、TLS 只读账号和无凭据身份输出已实现，待首次远端运行。
-6. `PARTIAL`：真实 MySQL opt-in 测试已实现只读拒绝、TLS、超时、行数/字节限制、流式读取、`utf8mb4`、Decimal、断连和重连；待远端 MySQL 8.4 通过。执行租约恢复继续由离线测试证明。
+4. `DONE`：本地 Windows 中文目录生命周期和 GitHub 干净检出的 Ubuntu/Windows 独立任务均已通过。
+5. `DONE`：GitHub Actions 临时 MySQL 8.4 服务、一次性 Schema、2505 行测试数据、TLS 只读账号和无凭据身份输出已在 run `31585533177` 真实运行。
+6. `PARTIAL`：真实 MySQL 已通过只读拒绝、TLS、行数/字节限制、流式读取、`utf8mb4` 和 Decimal；`83f2274` 修复超时与中途断连场景，待第三轮远端通过。执行租约恢复继续由离线测试证明。
 7. `BLOCKED`：在真实第二台同账号 Codex 上克隆仓库，安装 Skill 和 Agent，重启 Codex 后启动至少一个可见原生 Agent，并记录合同版本和 Agent ID。
 8. `DEFERRED`：真实三模式评测按用户当前指令暂缓；在用户重新确认前不得启动任何真实 Agent 评测。
 9. `BLOCKED`：只有前述发布门通过后，才能将草稿 PR 转为可合并状态、合并到 `main`、创建 `v1.2.1` 标签和正式 GitHub Release。
@@ -489,10 +490,10 @@ v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布�
 
 下一位 Codex 必须按以下顺序继续，不应跳过发布门直接开发 v1.3：
 
-1. 阅读本文件并确认当前分支仍为 `agent/sequential-multi-agent-pipeline`，实现基线不早于 `2b18c38`。
+1. 阅读本文件并确认当前分支仍为 `agent/sequential-multi-agent-pipeline`，实现基线不早于 `83f2274`。
 2. 检查工作区现有改动，保留用户或其他任务产生的文件，不进行无关回退。
 3. 检查本次推送对应的 Windows/Ubuntu 六版本矩阵、Ubuntu/Windows 干净安装和 MySQL 8.4 三类 CI 任务。
-4. 若 CI 失败，只修复对应确定性发布门，重跑 `136 passed, 2 skipped` 的离线基线和相关专项，不启动 Agent。
+4. 若 CI 失败，只修复对应确定性发布门，重跑 `137 passed, 2 skipped` 的离线基线和相关专项，不启动 Agent。
 5. CI 全绿后，将 Windows SHA-256、GitHub 干净安装和真实 MySQL 状态更新为 `DONE`，保存不含密码、私钥或连接串的 Actions 证据链接。
 6. 在真实第二台同账号 Codex 完成安装、重启和可见 Agent smoke；当前用户要求暂缓真实 Agent 工作，因此执行前必须再次确认。
 7. 真实三模式 Agent 评测保持 `DEFERRED`；用户额度恢复后再确认精简任务数量。若改用 DeepSeek，先执行第 4.5 节最小兼容 smoke。
@@ -509,14 +510,14 @@ v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布�
 | 检查项 | 预期 |
 |---|---|
 | 分支 | `agent/sequential-multi-agent-pipeline` |
-| 实现提交基线 | `2b18c38 Close deterministic v1.2.1 release gates` |
+| 实现提交基线 | `83f2274 Harden interrupted MySQL streams` |
 | PR | `#1` 草稿，尚未合并 |
 | 合同版本 | `1.2` |
 | 发布标签 | `v1.2.1` 尚未创建 |
 | 文档敏感信息 | 不包含密码、令牌、私钥或可用数据库连接串 |
-| 本地测试执行 | `136 passed, 2 skipped`；安装器专项 `10 passed` |
-| 干净安装 | 当前 Windows 中文目录全生命周期通过；GitHub Ubuntu/Windows 待远端 |
-| MySQL | 临时 8.4 工作流和真实 opt-in 测试已实现；待远端运行，不能提前标为真实通过 |
+| 本地测试执行 | `137 passed, 2 skipped`；安装器专项 `10 passed` |
+| 干净安装 | 当前 Windows 中文目录和 GitHub Ubuntu/Windows 全部通过 |
+| MySQL | 8.4 真实环境和前置断言通过；超时/断连修复待第三轮，整体仍为 `PARTIAL` |
 | 子 Agent | 本次不启动 |
 | 功能代码 | 仅修改确定性发布门，不修改 Agent 角色能力或模型配置 |
 | GitHub 推送 | 本文档提交后随实现一次推送；推送后须更新远端 CI 结果 |
