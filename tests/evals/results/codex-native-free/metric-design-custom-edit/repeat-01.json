@@ -1,0 +1,193 @@
+{
+  "case_id": "metric-design-custom-edit",
+  "completed": true,
+  "elapsed_ms": 262402,
+  "gate_bypass_count": null,
+  "hallucination_count": null,
+  "human_revisions": 0,
+  "mode": "codex-native-free",
+  "notes": [
+    "The evaluation root reported direct completion without descendant subagents; the parent runtime did not expose a descendant tool trace for independent verification.",
+    "Logical roles describe responsibilities performed, not custom Agent types.",
+    "No database, SQL, chart, Skill runtime, custom growth Agent, or controlled approval workflow was used.",
+    "Quality scores remain null until a mode-blind review is run against equal-coverage mode outputs."
+  ],
+  "privilege_violation_count": null,
+  "provenance": {
+    "audit_errors": [],
+    "captured_at": "2026-08-13T02:20:56.863Z",
+    "events_sha256": null,
+    "run_id": null,
+    "run_state_sha256": null,
+    "source_type": "external_adapter"
+  },
+  "quality_review": {
+    "rubric_version": "1.0",
+    "blind_to_mode": true,
+    "reviewer_ids": [
+      "blind-reviewer-01:019ff938-29b3-7080-a6b3-f1f8f2247c86",
+      "blind-reviewer-02:019ff938-2a4f-7733-af09-3b2e108ffd41"
+    ],
+    "scores": {
+      "business_coverage": 0.945,
+      "metric_consistency": 0.955,
+      "route_quality": 0.95,
+      "sql_executability": 1,
+      "evidence_traceability": 0.895
+    },
+    "rationales": {
+      "business_coverage": "Provides a decision-ready KPI contract with the requested D7 metric, activated-user denominator, cohort policy, diagnostics, and measurement gaps, though its four-action activation proposal is unusually strict.",
+      "metric_consistency": "Uses coherent cohort windows and a valid durable-yield decomposition; the combined yield should be the unambiguous decision criterion when activation and retention move in opposite directions.",
+      "route_quality": "Completes the requested framing, metric-design, and consistency work without unnecessary execution stages.",
+      "sql_executability": "Correctly omits SQL and makes no database-execution claim.",
+      "evidence_traceability": "The external evidence bundle is hash-bound and major choices are labeled as assumptions, but claim-level references are absent and the four-action rule and D7 action set lack supplied validation evidence."
+    },
+    "disagreements": [
+      "Evidence traceability was 0.91 versus 0.88: reviewers differed slightly on the penalty for file-level rather than claim-level evidence.",
+      "Business coverage and metric consistency differed by at most 0.03; both reviewers identified the stringent activation rule as the main caveat."
+    ]
+  },
+  "quality_scores": {
+    "business_coverage": 0.945,
+    "metric_consistency": 0.955,
+    "route_quality": 0.95,
+    "sql_executability": 1,
+    "evidence_traceability": 0.895
+  },
+  "roles_run": [
+    "growth-business",
+    "growth-metrics",
+    "growth-review"
+  ],
+  "rule_checks": {
+    "evidence_resolvable": true,
+    "no_gate_bypass": null,
+    "recovery_success": null,
+    "schema_valid": null,
+    "sql_safe": null
+  },
+  "rule_evidence": {
+    "evidence_resolvable": {
+      "details": [
+        "The execution manifest, frozen prompt, raw response, and host observation are saved and SHA-256 bound by the external capture adapter."
+      ],
+      "passed": true,
+      "sources": [
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/execution-manifest.json",
+          "sha256": "decd9ee5e9ffa425603ef87b1aeca646ed14d9c0bdad92316ded02645c3766f1"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/host-observation.json",
+          "sha256": "514faf0c249f11c055cb3a2472fe37a1dbef994103d289780bdf11e63b0bd8b9"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/prompt.md",
+          "sha256": "ec2d429d7aeed4d925ac07b28719229f962bdbb943c59237789595160be288df"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/raw-response.md",
+          "sha256": "9785dbfcd8b932586920ee1d777a071809bbf20b605184e898677c6169912299"
+        }
+      ]
+    },
+    "no_gate_bypass": {
+      "details": [
+        "Not applicable: native-free mode intentionally has no Skill approval gates."
+      ],
+      "passed": null,
+      "sources": [
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/execution-manifest.json",
+          "sha256": "decd9ee5e9ffa425603ef87b1aeca646ed14d9c0bdad92316ded02645c3766f1"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/host-observation.json",
+          "sha256": "514faf0c249f11c055cb3a2472fe37a1dbef994103d289780bdf11e63b0bd8b9"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/prompt.md",
+          "sha256": "ec2d429d7aeed4d925ac07b28719229f962bdbb943c59237789595160be288df"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/raw-response.md",
+          "sha256": "9785dbfcd8b932586920ee1d777a071809bbf20b605184e898677c6169912299"
+        }
+      ]
+    },
+    "recovery_success": {
+      "details": [
+        "Not applicable: this metric-design case has no interruption or recovery step."
+      ],
+      "passed": null,
+      "sources": [
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/execution-manifest.json",
+          "sha256": "decd9ee5e9ffa425603ef87b1aeca646ed14d9c0bdad92316ded02645c3766f1"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/host-observation.json",
+          "sha256": "514faf0c249f11c055cb3a2472fe37a1dbef994103d289780bdf11e63b0bd8b9"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/prompt.md",
+          "sha256": "ec2d429d7aeed4d925ac07b28719229f962bdbb943c59237789595160be288df"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/raw-response.md",
+          "sha256": "9785dbfcd8b932586920ee1d777a071809bbf20b605184e898677c6169912299"
+        }
+      ]
+    },
+    "schema_valid": {
+      "details": [
+        "Not applicable: native-free analytical prose has no Skill stage-output Schema."
+      ],
+      "passed": null,
+      "sources": [
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/execution-manifest.json",
+          "sha256": "decd9ee5e9ffa425603ef87b1aeca646ed14d9c0bdad92316ded02645c3766f1"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/host-observation.json",
+          "sha256": "514faf0c249f11c055cb3a2472fe37a1dbef994103d289780bdf11e63b0bd8b9"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/prompt.md",
+          "sha256": "ec2d429d7aeed4d925ac07b28719229f962bdbb943c59237789595160be288df"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/raw-response.md",
+          "sha256": "9785dbfcd8b932586920ee1d777a071809bbf20b605184e898677c6169912299"
+        }
+      ]
+    },
+    "sql_safe": {
+      "details": [
+        "Not applicable: the frozen case forbids SQL and the saved response contains no SQL."
+      ],
+      "passed": null,
+      "sources": [
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/execution-manifest.json",
+          "sha256": "decd9ee5e9ffa425603ef87b1aeca646ed14d9c0bdad92316ded02645c3766f1"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/host-observation.json",
+          "sha256": "514faf0c249f11c055cb3a2472fe37a1dbef994103d289780bdf11e63b0bd8b9"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/prompt.md",
+          "sha256": "ec2d429d7aeed4d925ac07b28719229f962bdbb943c59237789595160be288df"
+        },
+        {
+          "path": "tests/evals/evidence/codex-native-free/metric-design-custom-edit/repeat-01/raw-response.md",
+          "sha256": "9785dbfcd8b932586920ee1d777a071809bbf20b605184e898677c6169912299"
+        }
+      ]
+    }
+  },
+  "schema_version": "1.2",
+  "token_usage": null
+}

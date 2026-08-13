@@ -27,7 +27,7 @@
       "additionalProperties": false,
       "required": ["passed", "sources", "details"],
       "properties": {
-        "passed": {"type": "boolean"},
+        "passed": {"type": ["boolean", "null"]},
         "sources": {"type": "array", "items": {"$ref": "#/$defs/source"}, "uniqueItems": true},
         "details": {"type": "array", "items": {"type": "string"}}
       }
@@ -54,7 +54,16 @@
   "properties": {
     "schema_version": {"enum": ["1.1", "1.2"]},
     "case_id": {"type": "string", "minLength": 1},
-    "mode": {"enum": ["single-codex", "v1.0", "v1.1", "v1.2"]},
+    "mode": {
+      "enum": [
+        "single-codex",
+        "codex-native-free",
+        "controlled-skill",
+        "v1.0",
+        "v1.1",
+        "v1.2"
+      ]
+    },
     "completed": {"type": "boolean"},
     "roles_run": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
     "rule_checks": {
@@ -62,11 +71,11 @@
       "additionalProperties": false,
       "required": ["sql_safe", "schema_valid", "evidence_resolvable", "no_gate_bypass", "recovery_success"],
       "properties": {
-        "sql_safe": {"type": "boolean"},
-        "schema_valid": {"type": "boolean"},
-        "evidence_resolvable": {"type": "boolean"},
-        "no_gate_bypass": {"type": "boolean"},
-        "recovery_success": {"type": "boolean"}
+        "sql_safe": {"type": ["boolean", "null"]},
+        "schema_valid": {"type": ["boolean", "null"]},
+        "evidence_resolvable": {"type": ["boolean", "null"]},
+        "no_gate_bypass": {"type": ["boolean", "null"]},
+        "recovery_success": {"type": ["boolean", "null"]}
       }
     },
     "rule_evidence": {
@@ -126,7 +135,7 @@
     },
     "hallucination_count": {"type": ["integer", "null"], "minimum": 0},
     "privilege_violation_count": {"type": ["integer", "null"], "minimum": 0},
-    "gate_bypass_count": {"type": "integer", "minimum": 0},
+    "gate_bypass_count": {"type": ["integer", "null"], "minimum": 0},
     "human_revisions": {"type": "integer", "minimum": 0},
     "elapsed_ms": {"type": ["integer", "null"], "minimum": 0},
     "token_usage": {

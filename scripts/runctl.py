@@ -365,6 +365,7 @@ def initialize_run(runs_root: Path, run_id: str, request: dict[str, Any], model_
         "run_id": run_id,
         "revision": 0,
         "status": "initialized",
+        "completion_kind": None,
         "runtime": {
             "kind": "codex_native",
             "model_policy": model_policy,
@@ -461,6 +462,7 @@ def migrate_run(run_dir: Path) -> dict[str, Any]:
         state["runtime"]["resolved_models"] = current_models
         state["runtime"]["agent_settings"] = current_settings
         state.setdefault("execution_leases", [])
+        state.setdefault("completion_kind", None)
         return_state = state
         _commit(
             run_dir,
@@ -561,6 +563,209 @@ def _next_pending_stage(state: dict[str, Any]) -> str | None:
         if stage["status"] in {"pending", "revising", "stale"}:
             return stage["stage_id"]
     return None
+
+
+def _route_has_role(state: dict[str, Any], role: str) -> bool:
+    return any(stage.get("role") == role and stage.get("status") != "skipped" for stage in state["stages"])
+
+
+def _approved_review_stages(state: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        stage
+        for stage in state["stages"]
+        if stage["role"] == "growth-review"
+        and stage["status"] == "approved"
+        and stage.get("artifact")
+        and stage["artifact"].get("stage_status") in {"PASS", "PASS_WITH_RISKS"}
+        and any(
+            approval["stage_id"] == stage["stage_id"]
+            and approval["artifact_sha256"] == stage["artifact"]["sha256"]
+            for approval in state["approved_artifacts"]
+        )
+    ]
+
+
+EDITABLE_METRIC_FIELDS = {
+    "name",
+    "type",
+    "business_definition",
+    "formula",
+    "grain",
+    "dimensions",
+    "time_window",
+    "field_dependencies",
+    "status",
+    "source",
+    "owner",
+    "data_risks",
+}
+
+
+def _toml_string(value: str) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _toml_array(values: list[Any]) -> str:
+    return "[" + ", ".join(_toml_string(item) if isinstance(item, str) else str(item).lower() for item in values) + "]"
+
+
+def _write_metrics_workbench(path: Path, state: dict[str, Any], stage: dict[str, Any], metrics: list[dict[str, Any]]) -> None:
+    lines = [
+        "# Human-editable Metrics workbench. Keep metric_id stable; do not edit metadata below.",
+        'workbench_version = "1.0"',
+        f'contract_version = {_toml_string(CURRENT_CONTRACT_VERSION)}',
+        f'run_id = {_toml_string(state["run_id"])}',
+        f'stage_id = {_toml_string(stage["stage_id"])}',
+        f'base_artifact_sha256 = {_toml_string(stage["artifact"]["sha256"])}',
+        "",
+    ]
+    for metric in metrics:
+        lines.append("[[metrics]]")
+        for field in (
+            "metric_id",
+            "name",
+            "type",
+            "business_definition",
+            "formula",
+            "grain",
+        ):
+            lines.append(f"{field} = {_toml_string(metric[field])}")
+        lines.append(f"dimensions = {_toml_array(metric['dimensions'])}")
+        lines.append(f"time_window = {_toml_string(metric['time_window'])}")
+        lines.append(f"field_dependencies = {_toml_array(metric['field_dependencies'])}")
+        lines.append(f"status = {_toml_string(metric['status'])}")
+        lines.append(f"source = {_toml_string(metric['source'])}")
+        lines.append(f"owner = {_toml_string(metric['owner'])}")
+        lines.append(f"data_risks = {_toml_array(metric['data_risks'])}")
+        lines.append(f"version = {metric['version']}")
+        lines.append("")
+    atomic_write_text(path, "\n".join(lines).rstrip() + "\n")
+
+
+def _metric_workbench_payload(path: Path) -> dict[str, Any]:
+    try:
+        value = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, tomllib.TOMLDecodeError) as exc:
+        raise ValueError(f"Metrics workbench is not valid TOML: {exc}") from exc
+    if not isinstance(value, dict) or value.get("workbench_version") != "1.0":
+        raise ValueError("Metrics workbench must declare workbench_version = \"1.0\".")
+    if value.get("contract_version") != CURRENT_CONTRACT_VERSION:
+        raise ValueError("Metrics workbench contract_version does not match the current run contract.")
+    metrics = value.get("metrics")
+    if not isinstance(metrics, list) or not metrics:
+        raise ValueError("Metrics workbench must contain at least one [[metrics]] entry.")
+    for metric in metrics:
+        if not isinstance(metric, dict):
+            raise ValueError("Each [[metrics]] entry must be a TOML table.")
+        required = EDITABLE_METRIC_FIELDS | {"metric_id", "version"}
+        missing = required - set(metric)
+        if missing:
+            raise ValueError("Metrics workbench entry is missing field(s): " + ", ".join(sorted(missing)))
+        unknown = set(metric) - required
+        if unknown:
+            raise ValueError("Metrics workbench contains unsupported field(s): " + ", ".join(sorted(unknown)))
+        if not isinstance(metric["version"], int) or isinstance(metric["version"], bool) or metric["version"] < 1:
+            raise ValueError(f"Metric {metric.get('metric_id')!r} version must be a positive integer.")
+        if not isinstance(metric["metric_id"], str) or not re.fullmatch(r"^[a-zA-Z0-9][a-zA-Z0-9._-]+$", metric["metric_id"]):
+            raise ValueError(f"Metric ID is invalid: {metric.get('metric_id')!r}.")
+        if not isinstance(metric["dimensions"], list) or not all(isinstance(item, str) and item for item in metric["dimensions"]):
+            raise ValueError(f"Metric {metric['metric_id']} dimensions must be a string array.")
+        if not isinstance(metric["field_dependencies"], list) or not all(isinstance(item, str) and item for item in metric["field_dependencies"]):
+            raise ValueError(f"Metric {metric['metric_id']} field_dependencies must be a non-empty string array.")
+        if not metric["field_dependencies"]:
+            raise ValueError(f"Metric {metric['metric_id']} needs at least one field dependency.")
+        if not isinstance(metric["data_risks"], list) or not all(isinstance(item, str) for item in metric["data_risks"]):
+            raise ValueError(f"Metric {metric['metric_id']} data_risks must be a string array.")
+    ids = [metric["metric_id"] for metric in metrics]
+    if len(ids) != len(set(ids)):
+        raise ValueError("Metrics workbench contains duplicate metric_id values.")
+    names = [str(metric["name"]).casefold() for metric in metrics]
+    if len(names) != len(set(names)):
+        raise ValueError("Metrics workbench contains duplicate metric names.")
+    return value
+
+
+def _metric_edit_operations(current_metrics: dict[str, dict[str, Any]], proposed_metrics: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    proposed = {item["metric_id"]: item for item in proposed_metrics}
+    operations: list[dict[str, Any]] = []
+    for metric_id in sorted(set(current_metrics) - set(proposed)):
+        operations.append({"operation": "delete", "metric_id": metric_id, "requested_changes": {}})
+    for metric_id in sorted(set(proposed) - set(current_metrics)):
+        operations.append(
+            {
+                "operation": "add",
+                "metric_id": metric_id,
+                "requested_changes": {key: proposed[metric_id][key] for key in EDITABLE_METRIC_FIELDS},
+            }
+        )
+    for metric_id in sorted(set(current_metrics) & set(proposed)):
+        changes = {
+            key: proposed[metric_id][key]
+            for key in EDITABLE_METRIC_FIELDS
+            if current_metrics[metric_id].get(key) != proposed[metric_id].get(key)
+        }
+        if changes:
+            operations.append({"operation": "modify", "metric_id": metric_id, "requested_changes": changes})
+    return operations
+
+
+def export_metrics_workbench(run_dir: Path, output: Path) -> Path:
+    state = load_state(run_dir)
+    stage = next(
+        (
+            item
+            for item in state["stages"]
+            if item["role"] == "growth-metrics" and item["status"] == "awaiting_user_confirmation" and item.get("artifact")
+        ),
+        None,
+    )
+    if stage is None:
+        raise ValueError("Metrics workbench can only be exported while a Metrics artifact awaits confirmation.")
+    current = _verified_stage_output(run_dir, stage)
+    output = output.expanduser().resolve()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    _write_metrics_workbench(output, state, stage, current["role_payload"]["metrics"])
+    return output
+
+
+def _build_review_input_bundle(run_dir: Path, state: dict[str, Any], stage: dict[str, Any], path: Path) -> dict[str, Any]:
+    ancestor_ids = _descendants_reverse(state, stage["stage_id"])
+    inputs: list[dict[str, Any]] = []
+    approved_decisions: list[dict[str, Any]] = []
+    for prior_stage in state["stages"]:
+        if prior_stage["stage_id"] not in ancestor_ids or prior_stage["status"] != "approved" or not prior_stage.get("artifact"):
+            continue
+        output = _verified_stage_output(run_dir, prior_stage)
+        inputs.append(
+            {
+                "stage_id": prior_stage["stage_id"],
+                "role": prior_stage["role"],
+                "artifact_id": prior_stage["artifact"]["artifact_id"],
+                "artifact_revision": prior_stage["artifact"]["revision"],
+                "artifact_sha256": prior_stage["artifact"]["sha256"],
+                "json_path": prior_stage["artifact"]["json_path"],
+            }
+        )
+        for decision in output.get("confirmed_decisions", []):
+            approved_decisions.append(
+                {
+                    "stage_id": prior_stage["stage_id"],
+                    "artifact_sha256": prior_stage["artifact"]["sha256"],
+                    "decision": deepcopy(decision),
+                }
+            )
+    bundle = {
+        "schema_version": CURRENT_CONTRACT_VERSION,
+        "run_id": state["run_id"],
+        "route_revision": state["route_revision"],
+        "review_stage_id": stage["stage_id"],
+        "inputs": inputs,
+        "approved_decisions": approved_decisions,
+        "created_at": utc_now(),
+    }
+    validate_schema(bundle, SCHEMA_DIR / "review-input-bundle.schema.json")
+    atomic_write_json(path, bundle)
+    return bundle
 
 
 def set_route(run_dir: Path, route_file: Path) -> dict[str, Any]:
@@ -754,10 +959,28 @@ def start_stage(run_dir: Path, stage_id: str) -> Path:
         state["current_stage"] = stage_id
         state["pending_stage"] = None
         state["pending_approval"] = None
-        _set_status(state, "running")
-        _commit(run_dir, state, "stage_started", {"stage_id": stage_id, "role": stage["role"], "attempt": stage["attempt"]})
         attempt_dir = run_dir / "stages" / f"{stage_id}" / f"attempt-{stage['attempt']}"
         attempt_dir.mkdir(parents=True, exist_ok=False)
+        _set_status(state, "running")
+        _commit(run_dir, state, "stage_started", {"stage_id": stage_id, "role": stage["role"], "attempt": stage["attempt"]})
+        if stage["role"] == "growth-review":
+            bundle_path = attempt_dir / "review-input-bundle.json"
+            _build_review_input_bundle(run_dir, state, stage, bundle_path)
+            bundle_record = {
+                "artifact_id": new_id("review_input_bundle"),
+                "kind": "review_input_bundle",
+                "path": str(bundle_path.resolve().relative_to(run_dir.resolve())).replace("\\", "/"),
+                "sha256": sha256_file(bundle_path),
+                "metadata": {"stage_id": stage_id, "attempt": stage["attempt"]},
+            }
+            state["artifacts"].append(bundle_record)
+            stage["input_hashes"][f"artifact:{bundle_record['artifact_id']}"] = bundle_record["sha256"]
+            _commit(
+                run_dir,
+                state,
+                "review_input_bundle_registered",
+                {"stage_id": stage_id, "attempt": stage["attempt"], "artifact": bundle_record},
+            )
         return attempt_dir
 
 
@@ -1069,6 +1292,56 @@ def _validate_stage_context(run_dir: Path, state: dict[str, Any], stage: dict[st
     if missing_decisions:
         errors.append("Stage output omitted approved confirmed_decisions: " + json.dumps(missing_decisions, ensure_ascii=False, sort_keys=True))
 
+    if stage["role"] == "growth-review":
+        bundles = [
+            item
+            for item in state["artifacts"]
+            if item.get("kind") == "review_input_bundle"
+            and item.get("metadata", {}).get("stage_id") == stage["stage_id"]
+            and item.get("metadata", {}).get("attempt") == stage["attempt"]
+            and not item.get("superseded_by")
+        ]
+        if len(bundles) != 1:
+            errors.append("Review requires exactly one immutable input bundle for the active attempt.")
+        else:
+            bundle_record = bundles[0]
+            try:
+                bundle_path = resolve_within(run_dir, bundle_record["path"])
+                if not bundle_path.is_file() or sha256_file(bundle_path) != bundle_record["sha256"]:
+                    raise ValueError("Review input bundle is missing or changed.")
+                bundle = load_json(bundle_path)
+                validate_schema(bundle, SCHEMA_DIR / "review-input-bundle.schema.json")
+                if bundle["run_id"] != state["run_id"] or bundle["route_revision"] != state["route_revision"] or bundle["review_stage_id"] != stage["stage_id"]:
+                    raise ValueError("Review input bundle identity does not match the current run.")
+                expected_inputs = []
+                expected_decisions = []
+                for prior_stage in state["stages"]:
+                    if prior_stage["stage_id"] not in ancestor_ids or prior_stage["status"] != "approved" or not prior_stage.get("artifact"):
+                        continue
+                    output = _verified_stage_output(run_dir, prior_stage)
+                    expected_inputs.append(
+                        {
+                            "stage_id": prior_stage["stage_id"],
+                            "role": prior_stage["role"],
+                            "artifact_id": prior_stage["artifact"]["artifact_id"],
+                            "artifact_revision": prior_stage["artifact"]["revision"],
+                            "artifact_sha256": prior_stage["artifact"]["sha256"],
+                            "json_path": prior_stage["artifact"]["json_path"],
+                        }
+                    )
+                    for decision in output.get("confirmed_decisions", []):
+                        expected_decisions.append(
+                            {
+                                "stage_id": prior_stage["stage_id"],
+                                "artifact_sha256": prior_stage["artifact"]["sha256"],
+                                "decision": decision,
+                            }
+                        )
+                if bundle["inputs"] != expected_inputs or bundle["approved_decisions"] != expected_decisions:
+                    errors.append("Review input bundle no longer matches the approved upstream artifacts.")
+            except (OSError, KeyError, ValueError) as exc:
+                errors.append(f"Review input bundle validation failed: {exc}")
+
     for artifact in value.get("data_artifacts", []):
         digest = artifact.get("sha256")
         if digest is None:
@@ -1152,6 +1425,19 @@ def _validate_stage_context(run_dir: Path, state: dict[str, Any], stage: dict[st
                 by_id = {item["metric_id"]: item for item in metrics}
                 metric_id = edit.get("metric_id")
                 operation = edit.get("operation")
+                if operation == "batch":
+                    requested = edit.get("requested_changes", {})
+                    expected_metrics = requested.get("metrics") if isinstance(requested, dict) else None
+                    if not isinstance(expected_metrics, list):
+                        errors.append("Batch metric edit is missing requested_changes.metrics.")
+                    elif metrics != expected_metrics:
+                        errors.append("Metrics workbench was not applied exactly; the revised metric list differs from the workbench.")
+                    operation_records = requested.get("operations", []) if isinstance(requested, dict) else []
+                    if operation_records != _metric_edit_operations(
+                        {item["metric_id"]: item for item in latest.get("role_payload", {}).get("metrics", [])},
+                        expected_metrics or [],
+                    ):
+                        errors.append("Batch metric edit operations do not match the workbench diff.")
                 if operation == "delete" and metric_id in by_id:
                     errors.append(f"Metric edit requested deletion of {metric_id}, but it remains in the revised artifact.")
                 if operation in {"add", "modify"}:
@@ -2353,20 +2639,9 @@ def request_metric_edit(run_dir: Path, edit_file: Path) -> dict[str, Any]:
             for metric in current.get("role_payload", {}).get("metrics", [])
         }
         metric_id = edit["metric_id"]
-        editable_fields = {
-            "name",
-            "type",
-            "business_definition",
-            "formula",
-            "grain",
-            "dimensions",
-            "time_window",
-            "field_dependencies",
-            "status",
-            "source",
-            "owner",
-            "data_risks",
-        }
+        editable_fields = EDITABLE_METRIC_FIELDS
+        if edit["operation"] == "batch":
+            raise ValueError("Batch workbench edits must use 'metrics-workbench import'.")
         unknown_fields = set(edit["requested_changes"]) - editable_fields
         if unknown_fields:
             raise ValueError("Metric edit contains unsupported field(s): " + ", ".join(sorted(unknown_fields)))
@@ -2412,6 +2687,101 @@ def request_metric_edit(run_dir: Path, edit_file: Path) -> dict[str, Any]:
             {
                 "edit": edit,
                 "edit_sha256": edit_hash,
+                "stale_stages": sorted(affected - {stage["stage_id"]}),
+                "invalidated_artifacts": invalidated,
+            },
+        )
+        return state
+
+
+def import_metrics_workbench(run_dir: Path, workbench_file: Path) -> dict[str, Any]:
+    workbench = _metric_workbench_payload(workbench_file.expanduser().resolve())
+    with RunLock(run_dir):
+        state = load_state(run_dir, for_update=True)
+        if state["status"] != "awaiting_user_confirmation":
+            raise ValueError("Metrics workbench imports are accepted only while a Metrics artifact awaits confirmation.")
+        stage = next(
+            (
+                item
+                for item in state["stages"]
+                if item["role"] == "growth-metrics" and item["status"] == "awaiting_user_confirmation" and item.get("artifact")
+            ),
+            None,
+        )
+        if stage is None:
+            raise ValueError("No Metrics stage is awaiting confirmation.")
+        if workbench.get("run_id") != state["run_id"] or workbench.get("stage_id") != stage["stage_id"]:
+            raise ValueError("Metrics workbench run_id or stage_id does not match the current Metrics stage.")
+        if workbench.get("base_artifact_sha256") != stage["artifact"]["sha256"]:
+            raise ValueError("Metrics workbench is not based on the current Metrics artifact.")
+        current = _verified_stage_output(run_dir, stage)
+        current_metrics = {item["metric_id"]: item for item in current["role_payload"]["metrics"]}
+        normalized_metrics = deepcopy(workbench["metrics"])
+        for metric in normalized_metrics:
+            prior = current_metrics.get(metric["metric_id"])
+            if prior is None:
+                metric["version"] = 1
+            else:
+                changed = any(prior.get(field) != metric.get(field) for field in EDITABLE_METRIC_FIELDS)
+                metric["version"] = prior["version"] + 1 if changed else prior["version"]
+        operations = _metric_edit_operations(current_metrics, normalized_metrics)
+        if not operations:
+            raise ValueError("Metrics workbench does not change the current metric set.")
+        for operation in operations:
+            if operation["operation"] == "add":
+                continue
+            if operation["operation"] == "delete" and len(current_metrics) == 1:
+                raise ValueError("Metrics workbench cannot delete the only remaining metric.")
+        edit_id = f"workbench-{sha256_file(workbench_file)[:16]}"
+        requested = {
+            "metrics": normalized_metrics,
+            "operations": deepcopy(operations),
+        }
+        edit = {
+            "schema_version": CURRENT_CONTRACT_VERSION,
+            "edit_id": edit_id,
+            "run_id": state["run_id"],
+            "stage_id": stage["stage_id"],
+            "operation": "batch",
+            "metric_id": "metrics-workbench",
+            "requested_changes": requested,
+            "user_text": f"Import metrics workbench {workbench_file.name}.",
+            "base_artifact_sha256": stage["artifact"]["sha256"],
+            "created_at": utc_now(),
+        }
+        validate_schema(edit, SCHEMA_DIR / "metric-edit.schema.json")
+        edit_path = run_dir / "stages" / stage["stage_id"] / f"metric-edit-{edit_id}.json"
+        if edit_path.exists():
+            raise ValueError(f"Metric workbench edit ID already exists: {edit_id}")
+        atomic_write_json(edit_path, edit)
+        edit_hash = sha256_file(edit_path)
+        _, affected, invalidated = _revise_state(state, stage["stage_id"])
+        edit_artifact = {
+            "artifact_id": new_id("metric_edit"),
+            "kind": "metric_edit",
+            "path": str(edit_path.resolve().relative_to(run_dir.resolve())).replace("\\", "/"),
+            "sha256": edit_hash,
+            "metadata": {"workbench_path": str(workbench_file.resolve()), "workbench_sha256": sha256_file(workbench_file)},
+        }
+        state["artifacts"].append(edit_artifact)
+        state["pending_metric_edit"] = {
+            "edit_id": edit_id,
+            "stage_id": stage["stage_id"],
+            "operation": "batch",
+            "metric_id": "metrics-workbench",
+            "base_artifact_sha256": stage["artifact"]["sha256"],
+            "edit_path": edit_artifact["path"],
+            "edit_sha256": edit_hash,
+        }
+        _commit(
+            run_dir,
+            state,
+            "metric_workbench_imported",
+            {
+                "edit": edit,
+                "edit_sha256": edit_hash,
+                "workbench_sha256": sha256_file(workbench_file),
+                "operations": operations,
                 "stale_stages": sorted(affected - {stage["stage_id"]}),
                 "invalidated_artifacts": invalidated,
             },
@@ -2656,8 +3026,13 @@ def audit_run(run_dir: Path) -> list[str]:
         summaries = [item for item in active_artifacts if item.get("kind") == "run_summary"]
         final_reports = [item for item in active_artifacts if item.get("kind") == "final_report"]
         final_manifests = [item for item in active_artifacts if item.get("kind") == "final_report_manifest"]
-        if len(final_reports) != 1 or len(final_manifests) != 1:
-            errors.append("Completed run is missing its unique final report or manifest artifact.")
+        completion_kind = state.get("completion_kind")
+        if completion_kind not in {"report", "review_terminal"}:
+            errors.append("Completed run has no valid completion_kind.")
+        elif completion_kind == "report" and (len(final_reports) != 1 or len(final_manifests) != 1):
+            errors.append("Report-completed run is missing its unique final report or manifest artifact.")
+        elif completion_kind == "review_terminal" and (final_reports or final_manifests):
+            errors.append("Review-terminal run must not contain final report artifacts.")
         if len(summaries) != 1:
             errors.append("Completed run is missing an active run_summary artifact.")
         else:
@@ -2667,8 +3042,8 @@ def audit_run(run_dir: Path) -> list[str]:
                     summary.get("run_id") != state["run_id"]
                     or summary.get("status") != "completed"
                     or summary.get("state_revision") != state["revision"]
-                    or len(final_reports) != 1
-                    or summary.get("final_report_artifact_id") != final_reports[0].get("artifact_id")
+                    or summary.get("completion_kind") != completion_kind
+                    or summary.get("final_report_artifact_id") != (final_reports[0].get("artifact_id") if completion_kind == "report" and final_reports else None)
                 ):
                     errors.append("Completed run summary does not match the final state identity or revision.")
             except (AttributeError, OSError, ValueError, json.JSONDecodeError) as exc:
@@ -2841,6 +3216,7 @@ def build_run_summary(run_dir: Path, output: Path | None = None) -> dict[str, An
         "state_revision": state["revision"],
         "state_sha256": sha256_json(state),
         "status": state["status"],
+        "completion_kind": state.get("completion_kind"),
         "route_id": state["route_id"],
         "route_revision": state["route_revision"],
         "runtime": state["runtime"],
@@ -3037,6 +3413,7 @@ def publish_final_report(run_dir: Path) -> dict[str, Any]:
 
 
 def finalize_run(run_dir: Path) -> dict[str, Any]:
+    run_dir = run_dir.resolve()
     with RunLock(run_dir):
         state = load_state(run_dir, for_update=True)
         if state["status"] != "finalizing":
@@ -3049,29 +3426,41 @@ def finalize_run(run_dir: Path) -> dict[str, Any]:
             for stage in state["stages"]
             if stage["role"] == "growth-report" and stage["status"] == "approved" and stage.get("artifact")
         ]
-        if len(reports) != 1:
-            raise ValueError("Finalization requires exactly one user-approved Report stage.")
-        _verified_stage_output(run_dir, reports[0])
+        has_report_route = _route_has_role(state, "growth-report")
+        if has_report_route and len(reports) != 1:
+            raise ValueError("Finalization requires exactly one user-approved Report stage for a Report route.")
+        if not has_report_route and reports:
+            raise ValueError("A Review-terminal route cannot contain an approved Report stage.")
+        if reports:
+            _verified_stage_output(run_dir, reports[0])
+        reviews = _approved_review_stages(state)
+        if not reviews:
+            raise ValueError("Finalization requires an approved Review result of PASS or PASS_WITH_RISKS.")
+        if len(reviews) != 1:
+            raise ValueError("Finalization requires exactly one approved Review result.")
+        review_stage = reviews[0]
+        _verified_stage_output(run_dir, review_stage)
         if any(stage["status"] not in {"approved", "skipped"} for stage in state["stages"]):
             raise ValueError("Finalization requires every routed stage to be approved or skipped.")
         active_artifacts = [item for item in state["artifacts"] if not item.get("superseded_by")]
         active_kinds = {item.get("kind") for item in active_artifacts}
         if any(stage["role"] == "growth-metrics" and stage["status"] in {"approved", "completed"} for stage in state["stages"]):
             if "metric_lineage_latest" not in active_kinds:
-                raise ValueError("Finalization requires rebuilt metric lineage after Report.")
-            report_hash = reports[0]["artifact"]["sha256"]
-            report_index = next(
-                index
-                for index, artifact in enumerate(state["artifacts"])
-                if artifact.get("stage_id") == reports[0]["stage_id"] and artifact.get("sha256") == report_hash
-            )
-            lineage_indices = [
-                index
-                for index, artifact in enumerate(state["artifacts"])
-                if artifact.get("kind") == "metric_lineage_latest" and not artifact.get("superseded_by")
-            ]
-            if not lineage_indices or lineage_indices[-1] <= report_index:
-                raise ValueError("Finalization requires metric lineage to be rebuilt after Report.")
+                raise ValueError("Finalization requires an active metric lineage artifact.")
+            if reports:
+                report_hash = reports[0]["artifact"]["sha256"]
+                report_index = next(
+                    index
+                    for index, artifact in enumerate(state["artifacts"])
+                    if artifact.get("stage_id") == reports[0]["stage_id"] and artifact.get("sha256") == report_hash
+                )
+                lineage_indices = [
+                    index
+                    for index, artifact in enumerate(state["artifacts"])
+                    if artifact.get("kind") == "metric_lineage_latest" and not artifact.get("superseded_by")
+                ]
+                if not lineage_indices or lineage_indices[-1] <= report_index:
+                    raise ValueError("Finalization requires metric lineage to be rebuilt after Report.")
         visualizations = [
             stage
             for stage in state["stages"]
@@ -3105,38 +3494,35 @@ def finalize_run(run_dir: Path) -> dict[str, Any]:
 
         final_reports = [item for item in active_artifacts if item.get("kind") == "final_report"]
         final_manifests = [item for item in active_artifacts if item.get("kind") == "final_report_manifest"]
-        if len(final_reports) != 1 or len(final_manifests) != 1:
-            raise ValueError("Finalization requires one registered final report and its manifest.")
-        final_report = final_reports[0]
-        final_report_path = resolve_within(run_dir, final_report["path"])
-        if not final_report_path.is_file() or final_report_path.stat().st_size == 0 or sha256_file(final_report_path) != final_report["sha256"]:
-            raise ValueError("Registered final report is missing, empty, or changed.")
-        manifest_path = resolve_within(run_dir, final_manifests[0]["path"])
-        if not manifest_path.is_file() or sha256_file(manifest_path) != final_manifests[0]["sha256"]:
-            raise ValueError("Registered final report manifest is missing or changed.")
-        final_manifest = load_json(manifest_path)
-        validate_schema(final_manifest, SCHEMA_DIR / "final-report-manifest.schema.json")
-        review_stage = next(
-            (
-                item
-                for item in reversed(state["stages"])
-                if item["role"] == "growth-review" and item["status"] == "approved" and item.get("artifact")
-            ),
-            None,
-        )
+        final_report = None
+        if reports:
+            if len(final_reports) != 1 or len(final_manifests) != 1:
+                raise ValueError("Finalization requires one registered final report and its manifest.")
+            final_report = final_reports[0]
+            final_report_path = resolve_within(run_dir, final_report["path"])
+            if not final_report_path.is_file() or final_report_path.stat().st_size == 0 or sha256_file(final_report_path) != final_report["sha256"]:
+                raise ValueError("Registered final report is missing, empty, or changed.")
+            manifest_path = resolve_within(run_dir, final_manifests[0]["path"])
+            if not manifest_path.is_file() or sha256_file(manifest_path) != final_manifests[0]["sha256"]:
+                raise ValueError("Registered final report manifest is missing or changed.")
+            final_manifest = load_json(manifest_path)
+            validate_schema(final_manifest, SCHEMA_DIR / "final-report-manifest.schema.json")
+        elif final_reports or final_manifests:
+            raise ValueError("Review-terminal finalization cannot contain final report artifacts.")
         current_lineage = next((item for item in reversed(active_artifacts) if item.get("kind") == "metric_lineage_latest"), None)
         current_chart_manifest = next((item for item in reversed(active_artifacts) if item.get("kind") == "chart_manifest"), None)
-        expected_manifest_bindings = {
-            "report_artifact_id": reports[0]["artifact"]["artifact_id"],
-            "report_stage_sha256": reports[0]["artifact"]["sha256"],
-            "review_artifact_id": review_stage["artifact"]["artifact_id"] if review_stage else None,
-            "lineage_artifact_id": current_lineage["artifact_id"] if current_lineage else None,
-            "chart_manifest_artifact_id": current_chart_manifest["artifact_id"] if current_chart_manifest else None,
-            "final_report_path": final_report["path"],
-            "final_report_sha256": final_report["sha256"],
-        }
-        if any(final_manifest.get(key) != expected for key, expected in expected_manifest_bindings.items()):
-            raise ValueError("Final report manifest is not bound to the current Report, Review, lineage, and charts.")
+        if final_report is not None:
+            expected_manifest_bindings = {
+                "report_artifact_id": reports[0]["artifact"]["artifact_id"],
+                "report_stage_sha256": reports[0]["artifact"]["sha256"],
+                "review_artifact_id": review_stage["artifact"]["artifact_id"],
+                "lineage_artifact_id": current_lineage["artifact_id"] if current_lineage else None,
+                "chart_manifest_artifact_id": current_chart_manifest["artifact_id"] if current_chart_manifest else None,
+                "final_report_path": final_report["path"],
+                "final_report_sha256": final_report["sha256"],
+            }
+            if any(final_manifest.get(key) != expected for key, expected in expected_manifest_bindings.items()):
+                raise ValueError("Final report manifest is not bound to the current Report, Review, lineage, and charts.")
         if any(lease["state"] in {"prepared", "executing", "publishing"} for lease in state.get("execution_leases", [])):
             raise ValueError("Finalization cannot proceed while an execution lease is active.")
 
@@ -3150,7 +3536,8 @@ def finalize_run(run_dir: Path) -> dict[str, Any]:
         summary["status"] = "completed"
         summary["state_revision"] = state["revision"] + 1
         summary["finalization_base_state_sha256"] = sha256_json(state)
-        summary["final_report_artifact_id"] = final_report["artifact_id"]
+        summary["completion_kind"] = "report" if final_report is not None else "review_terminal"
+        summary["final_report_artifact_id"] = final_report["artifact_id"] if final_report is not None else None
         summary["recommended_action"] = "No workflow action is required."
         output = run_dir / "final" / "summaries" / f"run-summary-r{state['revision'] + 1}.json"
         atomic_write_json(output, summary)
@@ -3159,9 +3546,14 @@ def finalize_run(run_dir: Path) -> dict[str, Any]:
             "kind": "run_summary",
             "path": str(output.relative_to(run_dir.resolve())).replace("\\", "/"),
             "sha256": sha256_file(output),
-            "metadata": {"final_report_artifact_id": final_report["artifact_id"]},
+            "metadata": {
+                "completion_kind": summary["completion_kind"],
+                "final_report_artifact_id": final_report["artifact_id"] if final_report is not None else None,
+                "review_artifact_id": review_stage["artifact"]["artifact_id"],
+            },
         }
         state["artifacts"].append(record)
+        state["completion_kind"] = summary["completion_kind"]
         _set_status(state, "completed")
         _commit(run_dir, state, "run_finalized", {"run_summary": record})
         return state
@@ -3300,6 +3692,14 @@ def main() -> int:
     metric_edit_parser.add_argument("--run-dir", type=Path, required=True)
     metric_edit_parser.add_argument("--edit-file", type=Path, required=True)
 
+    workbench_export_parser = sub.add_parser("metrics-workbench-export")
+    workbench_export_parser.add_argument("--run-dir", type=Path, required=True)
+    workbench_export_parser.add_argument("--output", type=Path, required=True)
+
+    workbench_import_parser = sub.add_parser("metrics-workbench-import")
+    workbench_import_parser.add_argument("--run-dir", type=Path, required=True)
+    workbench_import_parser.add_argument("--workbench-file", type=Path, required=True)
+
     stop_parser = sub.add_parser("stop")
     stop_parser.add_argument("--run-dir", type=Path, required=True)
     stop_parser.add_argument("--reason", required=True)
@@ -3394,6 +3794,10 @@ def main() -> int:
             _print(revise(args.run_dir, args.stage_id, args.request))
         elif args.command == "metric-edit":
             _print(request_metric_edit(args.run_dir, args.edit_file))
+        elif args.command == "metrics-workbench-export":
+            _print({"path": str(export_metrics_workbench(args.run_dir, args.output))})
+        elif args.command == "metrics-workbench-import":
+            _print(import_metrics_workbench(args.run_dir, args.workbench_file))
         elif args.command == "stop":
             _print(stop(args.run_dir, args.reason))
         elif args.command == "resume":

@@ -35,7 +35,7 @@ For each stage:
 
 `BLOCKED` and `FAIL` are not approvable stage results. They move the run to a blocked or failed boundary for input, revision, or rollback.
 
-Report is terminal. After its validated JSON and final Markdown are written, enter `finalizing`, rebuild required lineage, verify chart manifests, and call `runctl.py finalize`. No additional user stage gate is required.
+Report is terminal. After its validated JSON and final Markdown are written, enter `finalizing`, rebuild required lineage, verify chart manifests, publish the immutable report, and call `runctl.py finalize`. A route ending at Review is also terminal after Review approval; call `runctl.py finalize` directly to create an immutable review-terminal summary without a final report.
 
 ## User Commands
 
@@ -78,6 +78,7 @@ The fingerprint also binds dialect, data-source label, non-secret physical sourc
 - A route revision can carry forward an approval only when stage identity, input hashes, and artifact hash are unchanged and listed in `reused_approved_artifacts`.
 - Review `FAIL` creates a hash-bound rollback plan. Only a later `approve_rollback` action routes back to the earliest responsible stage and invalidates completed descendants.
 - Report requires Review `PASS` or `PASS_WITH_RISKS`.
+- A Review-terminal route requires Review `PASS` or `PASS_WITH_RISKS` and does not create a final report.
 
 ## Concurrency
 

@@ -61,3 +61,5 @@ Every failed attempt remains in its own attempt directory. Resuming creates a ne
 Before `record-stage`, the root records `agent-execution-receipt.json`. The receipt binds the native Agent ID when observable, role configuration hash, attempt, raw response hash, parsed JSON hash, timestamps, model metadata, and explicit missing-metadata reasons. `record-stage` rejects a missing, reused, overwritten, or mismatched receipt.
 
 After validation, `scripts/render_stage_report.py` creates Markdown. The JSON object, not the Markdown report, is passed to downstream Agents.
+
+For Review, the root also creates `review-input-bundle.json` in the active attempt directory. It is a hash-bound snapshot of approved upstream artifact identities and approved decisions. Review must use that exact bundle; the runtime rejects a missing, changed, or stale bundle.

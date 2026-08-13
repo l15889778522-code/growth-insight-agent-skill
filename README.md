@@ -151,13 +151,13 @@ Report 也必须经过用户确认。流程随后进入 `finalizing`；重建最
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-先从真实 v1.2 run 重算规则证据，再汇总三模式结果：
+当前受控 Skill 模式从真实 v1.2 run 重算规则证据，再汇总三模式结果：
 
 ```powershell
 python scripts/capture_eval_record.py `
   --run-dir <run> `
   --case-id full-diagnosis-sqlite `
-  --output tests/evals/results/v1.2/full-diagnosis-sqlite/repeat-01.json
+  --output tests/evals/results/controlled-skill/full-diagnosis-sqlite/repeat-01.json
 ```
 
 缺少真实运行结果时标记为 `not_run`：
@@ -169,7 +169,7 @@ python scripts/run_evals.py `
   --output-markdown tests/evals/evaluation-results.md
 ```
 
-对比模式为单 Codex、v1.0 固定流程和 v1.2 原生动态多 Agent。Schema、SQL、安全门、证据和恢复规则从产物计算；质量分只接受统一盲评记录，Token 不可获得时保留为 `null`。
+正式对比模式为单 Codex、Codex 原生自由子 Agent 编排和当前受控 Skill。三个模式必须使用同一输入快照，并按用户指令一次只运行一个模式；覆盖不一致时不形成横向结论。Schema、SQL、安全门、证据和恢复规则尽量从产物计算；质量分只接受统一盲评记录，Token 不可获得时保留为 `null`。
 
 ## 当前边界
 

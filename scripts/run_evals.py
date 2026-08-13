@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Aggregate repeatable evaluations for single Codex, v1.0, and v1.2 runs."""
+"""Aggregate repeatable evaluations for the three formal comparison modes."""
 
 from __future__ import annotations
 
@@ -12,7 +12,16 @@ from typing import Any
 from runtime_common import SCHEMA_DIR, atomic_write_json, atomic_write_text, load_json, sha256_file, utc_now, validate_schema
 
 
-MODES = ("single-codex", "v1.0", "v1.2")
+MODES = ("single-codex", "codex-native-free", "controlled-skill")
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _portable_path(path: Path) -> str:
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return str(resolved)
 
 
 def _mean(values: list[float]) -> float | None:
@@ -41,13 +50,16 @@ def _evaluate_record(case: dict[str, Any], record: dict[str, Any]) -> dict[str, 
     forbidden = set(case["forbidden_roles"])
     route_correct = required.issubset(roles) and not (forbidden & set(roles)) and len(roles) <= case["max_roles"]
     checks = {"route_correct": route_correct, **record["rule_checks"]}
+    applicable_checks = [value for value in checks.values() if value is not None]
     quality_scores = record["quality_scores"]
     return {
         "status": "completed" if record["completed"] else "incomplete",
         "case_id": case["case_id"],
         "mode": record["mode"],
         "rule_checks": checks,
-        "rule_score": _mean([1.0 if value else 0.0 for value in checks.values()]),
+        "applicable_rule_checks": len(applicable_checks),
+        "total_rule_checks": len(checks),
+        "rule_score": _mean([1.0 if value else 0.0 for value in applicable_checks]),
         "quality_scores": quality_scores,
         "quality_score": _mean(list(quality_scores.values())) if quality_scores is not None else None,
         "hallucination_count": record["hallucination_count"],
@@ -91,7 +103,7 @@ def evaluate(cases_file: Path, results_root: Path) -> dict[str, Any]:
                 if record.get("mode") != mode:
                     raise ValueError(f"Evaluation record mode mismatch: {path}")
                 evaluated = _evaluate_record(case, record)
-                evaluated["record_path"] = str(path.resolve())
+                evaluated["record_path"] = _portable_path(path)
                 evaluated["record_sha256"] = sha256_file(path)
                 records.append(evaluated)
 
@@ -106,6 +118,7 @@ def evaluate(cases_file: Path, results_root: Path) -> dict[str, Any]:
         completed_case_ids = {item["case_id"] for item in completed}
         hallucinations = [item["hallucination_count"] for item in completed if item["hallucination_count"] is not None]
         privilege_violations = [item["privilege_violation_count"] for item in completed if item["privilege_violation_count"] is not None]
+        gate_bypasses = [item["gate_bypass_count"] for item in completed if item["gate_bypass_count"] is not None]
         modes[mode] = {
             "completed_cases": len(completed_case_ids),
             "total_cases": len(cases),
@@ -115,6 +128,8 @@ def evaluate(cases_file: Path, results_root: Path) -> dict[str, Any]:
             "success_rate": round(len(completed) / len(attempted), 4) if attempted else None,
             "rule_score": _mean(rule_scores),
             "rule_score_stddev": _variation(rule_scores),
+            "applicable_rule_checks": sum(item["applicable_rule_checks"] for item in completed),
+            "total_rule_checks": sum(item["total_rule_checks"] for item in completed),
             "quality_score": _mean(quality_scores),
             "quality_score_stddev": _variation(quality_scores),
             "quality_measurements": len(quality_scores),
@@ -122,7 +137,8 @@ def evaluate(cases_file: Path, results_root: Path) -> dict[str, Any]:
             "hallucination_measurements": len(hallucinations),
             "privilege_violation_count": sum(privilege_violations) if privilege_violations else None,
             "privilege_violation_measurements": len(privilege_violations),
-            "gate_bypass_count": sum(item["gate_bypass_count"] for item in completed),
+            "gate_bypass_count": sum(gate_bypasses) if gate_bypasses else None,
+            "gate_bypass_measurements": len(gate_bypasses),
             "human_revisions": sum(item["human_revisions"] for item in completed),
             "mean_elapsed_ms": _mean(elapsed),
             "elapsed_ms_stddev": _variation(elapsed),
@@ -133,9 +149,9 @@ def evaluate(cases_file: Path, results_root: Path) -> dict[str, Any]:
     return {
         "schema_version": "1.2",
         "generated_at": utc_now(),
-        "cases_file": str(cases_file.resolve()),
+        "cases_file": _portable_path(cases_file),
         "cases_sha256": sha256_file(cases_file),
-        "results_root": str(results_root.resolve()),
+        "results_root": _portable_path(results_root),
         "modes": modes,
         "records": records,
         "interpretation": "Compare quality and cost only at equal case and measurement coverage; missing live runs and unmeasured blind-review or Token fields are not scored as failures or successes.",
@@ -148,13 +164,15 @@ def render_markdown(result: dict[str, Any]) -> str:
         "",
         f"Generated: `{result['generated_at']}`",
         "",
-        "| Mode | Coverage | Rule score | Quality score | Gate bypasses | Mean elapsed ms | Mean tokens |",
-        "|---|---:|---:|---:|---:|---:|---:|",
+        "| Mode | Coverage | Rule score | Applicable rules | Quality score | Gate bypasses | Mean elapsed ms | Mean tokens |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for mode, item in result["modes"].items():
         lines.append(
             f"| {mode} | {item['completed_cases']}/{item['total_cases']} | {item['rule_score'] if item['rule_score'] is not None else 'N/A'} | "
-            f"{item['quality_score'] if item['quality_score'] is not None else 'N/A'} | {item['gate_bypass_count']} | "
+            f"{item['applicable_rule_checks']}/{item['total_rule_checks']} | "
+            f"{item['quality_score'] if item['quality_score'] is not None else 'N/A'} | "
+            f"{item['gate_bypass_count'] if item['gate_bypass_count'] is not None else 'N/A'} | "
             f"{item['mean_elapsed_ms'] if item['mean_elapsed_ms'] is not None else 'N/A'} | {item['mean_total_tokens'] if item['mean_total_tokens'] is not None else 'N/A'} |"
         )
     lines.extend(["", result["interpretation"], "", "## Case Status", ""])

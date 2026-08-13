@@ -1,0 +1,86 @@
+{
+  "rubric_version": "1.0",
+  "blind_to_mode": true,
+  "reviewer_id": "blind-reviewer-01",
+  "candidate_reviews": {
+    "Aster": {
+      "scores": {
+        "business_coverage": 0.95,
+        "metric_consistency": 0.97,
+        "route_quality": 0.95,
+        "sql_executability": 1,
+        "evidence_traceability": 0.91
+      },
+      "rationales": {
+        "business_coverage": "Provides a decision-ready KPI contract, incorporates the requested D7 metric, distinguishes outcomes from diagnostics, supplies a decision rule, and covers cohort maturity, late arrivals, unsupported segments, and measurement gaps.",
+        "metric_consistency": "The D7 denominator is limited to activated new users, D7 is a complete Asia/Shanghai calendar day, and activation uses a half-open 24-hour elapsed window. The durable-adoption-yield decomposition is valid for the same mature cohort.",
+        "route_quality": "Uses the stated framing, metric-design, and consistency responsibilities to produce a complete, usable workflow outcome without unnecessary stages.",
+        "sql_executability": "Correctly omits SQL and makes no claim that calculations were executed.",
+        "evidence_traceability": "The frozen prompt, answer, host observation, and execution manifest are file-hash bound, and the prose uses only supplied fields while labeling major proposals as assumptions or hypotheses. Traceability is reduced slightly because individual claims have no structured references to specific evidence."
+      },
+      "issues": [
+        "Requiring all four actions on one project is a stringent candidate rule that may exclude legitimate adoption paths, including contributors joining an existing project.",
+        "The proposed D7 actions are observable activity proxies, not evidence that another teammate participated.",
+        "The 48-hour lateness buffer is an explicit operating assumption but is unsupported by an ingestion SLA or ingestion timestamp.",
+        "Evidence integrity is established at the file level, but claim-level structured references are absent."
+      ]
+    },
+    "Birch": {
+      "scores": {
+        "business_coverage": 0.97,
+        "metric_consistency": 0.93,
+        "route_quality": 0.97,
+        "sql_executability": 1,
+        "evidence_traceability": 0.92
+      },
+      "rationales": {
+        "business_coverage": "Directly answers which KPIs should guide onboarding, preserves the requested conditional D7 metric, adds an all-new-user outcome that protects against selection effects, and provides reporting, lateness, segmentation, and decision policies.",
+        "metric_consistency": "The D7 numerator, activated-user denominator, local calendar window, and durable-yield decomposition are mutually consistent. Zero-denominator behavior is defined, although maturity treatment for 24-hour activation and action-reach denominators is less explicit than the D7 policy.",
+        "route_quality": "Reaches a concise, decision-ready KPI tree through the shortest sufficient responsibilities and completes the workflow.",
+        "sql_executability": "Correctly omits SQL and does not imply that data was queried.",
+        "evidence_traceability": "The evidence bundle is file-hash bound, proposed definitions use supported fields, and missing registration taxonomy, actor semantics, timezone normalization, and collaboration evidence are disclosed. The absence of claim-level structured references modestly limits direct auditability."
+      },
+      "issues": [
+        "The paired activation rule can be satisfied by create_project plus invite_teammate, which remains setup activity; the claim that it excludes isolated setup is therefore too strong.",
+        "Assigning a task may be self-assignment, and inviting a teammate does not demonstrate acceptance or participation.",
+        "The contract should explicitly exclude immature registration cohorts from the 24-hour activation and action-reach denominators.",
+        "Evidence integrity is established at the file level, but claim-level structured references are absent."
+      ]
+    },
+    "Cobalt": {
+      "scores": {
+        "business_coverage": 0.58,
+        "metric_consistency": 0.81,
+        "route_quality": 0.36,
+        "sql_executability": 1,
+        "evidence_traceability": 0.96
+      },
+      "rationales": {
+        "business_coverage": "It preserves the requested D7 definition and identifies relevant process metrics and caveats, but leaves the final activation rule and D7 core-action set unresolved. It therefore falls short of the requested concise, operational KPI contract.",
+        "metric_consistency": "The D7 denominator and Asia/Shanghai window are correct, and proposed lateness policies are consistently labeled as candidates. The activation-rate denominator does not explicitly exclude users whose 24-hour windows remain open, while optional metrics add complexity without resolving the central definitions.",
+        "route_quality": "The analytical stages and approvals were completed, but the overall workflow did not complete because finalization required an absent stage. The output is also substantially longer than necessary and ends with unresolved dependencies rather than a fully usable decision.",
+        "sql_executability": "Correctly omits SQL and makes no unsupported execution claim.",
+        "evidence_traceability": "Traceability is strong: deterministic validators resolved 75 structured references to registered immutable artifacts, and stage schemas, receipts, approvals, lineage, and hash-chain auditing passed. The registered prior-attempt artifact is resolvable, but version-transition conclusions based on that unapproved baseline remain appropriately caveated."
+      },
+      "issues": [
+        "The final activation definition and agreed D7 core-action set remain unanswered, preventing operational use of the core KPI.",
+        "The 24-hour activation-rate denominator lacks an explicit closed-window eligibility rule for recent cohorts.",
+        "The internal-registration guardrail and extensive version-management discussion add scope without materially resolving the onboarding decision.",
+        "Version-transition and no-deletion conclusions use a registered but unapproved prior-attempt baseline and should not be treated as approved business history.",
+        "Under route quality, the overall workflow did not reach completion."
+      ]
+    }
+  },
+  "ranking": [
+    "Birch",
+    "Aster",
+    "Cobalt"
+  ],
+  "uncertainties": [
+    "The frozen input does not specify the successful-registration event_name, so every candidate depends on a documented mapping.",
+    "No empirical outcome data is available to validate whether any proposed activation-action combination predicts durable adoption.",
+    "The agreed D7 core collaboration action set, event_time storage semantics, and event-latency SLA are not supplied.",
+    "Birch and Aster remain close: Birch offers the stronger decision hierarchy, while Aster is more explicit about maturity and late-arrival operations.",
+    "Cobalt has the strongest structured evidence traceability, but that does not resolve its open business definitions or incomplete workflow outcome."
+  ]
+}

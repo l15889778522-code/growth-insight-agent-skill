@@ -12,7 +12,9 @@ from runctl import (
     approve,
     audit_run,
     build_run_summary,
+    export_metrics_workbench,
     finalize_run,
+    import_metrics_workbench,
     load_state,
     publish_final_report,
     record_agent_runtime,
@@ -322,3 +324,93 @@ def test_report_requires_post_report_lineage_before_finalization(approved_run) -
     final_report = next(item for item in load_state(run_dir)["artifacts"] if item.get("kind") == "final_report")
     (run_dir / final_report["path"]).write_text("tampered\n", encoding="utf-8")
     assert any("Artifact hash mismatch" in error for error in audit_run(run_dir))
+
+
+def test_review_terminal_route_finalizes_with_immutable_summary(approved_run) -> None:
+    run_dir, _ = approved_run(["growth-business", "growth-review"])
+    _run_stage(run_dir, "growth-business", "s01-business")
+    approve_pending(run_dir, "stage", "review-terminal-business")
+    _run_stage(run_dir, "growth-review", "s02-review")
+    approve_pending(run_dir, "stage", "review-terminal-review")
+    assert load_state(run_dir)["status"] == "finalizing"
+
+    finalize_run(run_dir)
+    state = load_state(run_dir)
+    assert state["status"] == "completed"
+    assert state["completion_kind"] == "review_terminal"
+    assert not [item for item in state["artifacts"] if item.get("kind") in {"final_report", "final_report_manifest"}]
+    summary = next(item for item in state["artifacts"] if item.get("kind") == "run_summary")
+    summary_value = json.loads((run_dir / summary["path"]).read_text(encoding="utf-8"))
+    assert summary_value["completion_kind"] == "review_terminal"
+    assert audit_run(run_dir) == []
+
+
+def test_review_terminal_finalize_accepts_relative_run_dir(approved_run, monkeypatch) -> None:
+    run_dir, _ = approved_run(["growth-business", "growth-review"])
+    _run_stage(run_dir, "growth-business", "s01-business")
+    approve_pending(run_dir, "stage", "relative-terminal-business")
+    _run_stage(run_dir, "growth-review", "s02-review")
+    approve_pending(run_dir, "stage", "relative-terminal-review")
+
+    monkeypatch.chdir(run_dir.parent)
+    finalize_run(Path(run_dir.name))
+
+    state = load_state(run_dir)
+    assert state["status"] == "completed"
+    assert state["completion_kind"] == "review_terminal"
+    assert audit_run(run_dir) == []
+
+
+def test_report_terminal_route_still_requires_report(approved_run) -> None:
+    run_dir, _ = approved_run(["growth-business", "growth-review", "growth-report"])
+    _run_stage(run_dir, "growth-business", "s01-business")
+    approve_pending(run_dir, "stage", "report-required-business")
+    _run_stage(run_dir, "growth-review", "s02-review")
+    approve_pending(run_dir, "stage", "report-required-review")
+    with pytest.raises(ValueError, match="status running"):
+        finalize_run(run_dir)
+
+
+def test_review_terminal_interruption_can_resume_and_finalize(approved_run) -> None:
+    run_dir, _ = approved_run(["growth-business", "growth-review"])
+    _run_stage(run_dir, "growth-business", "s01-business")
+    approve_pending(run_dir, "stage", "resume-terminal-business")
+    _run_stage(run_dir, "growth-review", "s02-review")
+    approve_pending(run_dir, "stage", "resume-terminal-review")
+    stop(run_dir, "pause before terminal finalization")
+    assert load_state(run_dir)["status"] == "stopped"
+    resumed = resume(run_dir)
+    assert resumed["status"] == "finalizing"
+    finalize_run(run_dir)
+    assert load_state(run_dir)["completion_kind"] == "review_terminal"
+    assert audit_run(run_dir) == []
+
+
+def test_illegal_terminal_route_without_review_is_rejected(approved_run) -> None:
+    run_dir, _ = approved_run(["growth-business"])
+    _run_stage(run_dir, "growth-business", "s01-business")
+    approve_pending(run_dir, "stage", "illegal-terminal-business")
+    with pytest.raises(ValueError, match="approved Review"):
+        finalize_run(run_dir)
+
+
+def test_metrics_workbench_export_import_and_exact_revision(approved_run, tmp_path: Path) -> None:
+    run_dir, _ = approved_run(["growth-metrics", "growth-review"])
+    _run_stage(run_dir, "growth-metrics", "s01-metrics")
+    workbench = tmp_path / "metrics-workbench.toml"
+    export_metrics_workbench(run_dir, workbench)
+    text = workbench.read_text(encoding="utf-8")
+    workbench.write_text(text.replace('formula = "SUM(revenue)"', 'formula = "SUM(net_revenue)"'), encoding="utf-8")
+    import_metrics_workbench(run_dir, workbench)
+    pending = load_state(run_dir)["pending_metric_edit"]
+    assert pending["operation"] == "batch"
+    attempt = start_stage(run_dir, "s01-metrics")
+    revised = stage_output(
+        "growth-metrics",
+        "test-run",
+        "s01-metrics",
+        int(attempt.name.removeprefix("attempt-")),
+        metrics=[metric(version=2, formula="SUM(net_revenue)")],
+    )
+    materialize_stage(run_dir, revised)
+    assert load_state(run_dir)["pending_metric_edit"] is None

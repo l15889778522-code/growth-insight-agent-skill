@@ -1,0 +1,310 @@
+{
+  "schema_version": "1.0",
+  "case_id": "metric-design-custom-edit",
+  "repeat": 1,
+  "rubric_version": "1.0",
+  "frozen_input": {
+    "business_question": "Which activation KPIs should the onboarding team use to improve durable product adoption?",
+    "product_definition": {
+      "product": "A web-based team project collaboration product.",
+      "new_user": "A non-internal account on its first successful registration.",
+      "candidate_activation_actions": [
+        "create_project",
+        "create_task",
+        "invite_teammate",
+        "assign_task"
+      ],
+      "available_event_fields": [
+        "user_id",
+        "event_name",
+        "event_time",
+        "project_id",
+        "is_internal"
+      ],
+      "reporting_timezone": "Asia/Shanghai"
+    },
+    "user_metric_edit": {
+      "operation": "add",
+      "name": "D7 retained activation rate",
+      "definition": "Among users who satisfy the final activation definition within 24 hours after registration, the share who perform at least one agreed core collaboration action on calendar day D0+7 in Asia/Shanghai.",
+      "required_notes": [
+        "Keep the denominator limited to activated new users.",
+        "State how late-arriving D7 cohorts are handled.",
+        "Do not invent fields beyond the supplied product definition."
+      ]
+    },
+    "constraints": {
+      "database_access": false,
+      "sql_required": false,
+      "chart_required": false,
+      "expected_deliverable": "A concise, decision-ready KPI contract that incorporates the user metric edit."
+    }
+  },
+  "neutral_workflow_facts": {
+    "Aster": {
+      "analytical_responsibilities": [
+        "business framing",
+        "metric design",
+        "consistency review"
+      ],
+      "workflow_completed": true,
+      "sql_or_charts_used": false,
+      "evidence_verification": "External prompt, response, host observation, and manifest are hash-bound; no claim-level structured references."
+    },
+    "Birch": {
+      "analytical_responsibilities": [
+        "business framing",
+        "metric design",
+        "consistency review"
+      ],
+      "workflow_completed": true,
+      "sql_or_charts_used": false,
+      "evidence_verification": "External prompt, response, host observation, and manifest are hash-bound; no claim-level structured references."
+    },
+    "Cobalt": {
+      "analytical_responsibilities": [
+        "business framing",
+        "metric design",
+        "independent review"
+      ],
+      "workflow_completed": false,
+      "sql_or_charts_used": false,
+      "evidence_verification": "75 structured references resolved; schemas, receipts, approvals, lineage, and hash-chain audit passed.",
+      "completion_blocker": "Terminal metric-design route entered finalization, but finalization required an absent Report stage."
+    }
+  },
+  "candidate_outputs": {
+    "Aster": "# Native-Free Raw Response\n\n**Recommendation**\n\nAdopt a strict initial activation milestone that represents a complete collaboration setup:\n\n> A new user is activated when, within 24 elapsed hours of first successful registration, they perform `create_project`, `create_task`, `invite_teammate`, and `assign_task` for the same non-null `project_id`.\n\nUse `create_task` or `assign_task` as the agreed D7 core collaboration action. These represent ongoing project execution; project creation and invitation are primarily setup actions.\n\n**KPI Contract**\n\n| Hierarchy | KPI | Business definition and formula | Window | Grain and segments | Caveats |\n|---|---|---|---|---|---|\n| Outcome | **D7 retained activation rate** | Activated new users performing `create_task` or `assign_task` on D7 ÷ activated new users eligible for D7 measurement. The denominator remains strictly limited to activated new users. | Activation: `[registration, registration + 24h)`. D7: the full Asia/Shanghai calendar date seven dates after registration date. | User-level flag; report by registration cohort week and overall. | Conditional on activation, so it can improve while total activation falls. Does not prove another teammate participated. |\n| Primary driver | **24-hour collaborative activation rate** | New users satisfying the complete activation definition ÷ eligible new users whose 24-hour window has closed. | First 24 elapsed hours after registration. | User-level flag; daily cohorts, aggregated weekly. | The four-action threshold is an initial hypothesis and should eventually be validated against longer-term adoption. |\n| Speed diagnostic | **Activation completion time, P50/P75** | P50 and P75 of `activation_completion_time − registration_time`, where completion time is when the last required action first makes the user activated. | Censored at 24 hours. | Activated user; weekly registration cohort. | Excludes non-activated users and therefore must never replace activation rate. |\n| Funnel diagnostics | **24-hour action reach rates** | For each candidate action: unique eligible new users performing that action within 24 hours ÷ eligible new users whose window has closed. | First 24 elapsed hours. | User-action flag; weekly registration cohort. | These are parallel reach rates, not an ordered funnel. Use them to locate the action associated with activation loss. |\n\nSegmentation should be limited to overall results and registration cohort day or week. The supplied fields do not support defensible cuts by acquisition channel, device, geography, role, organization, or team size. `project_id` should not be used as a user segment because users may have multiple projects.\n\n**Decision Rule**\n\nJudge onboarding changes on the pair of primary metrics:\n\n- Prefer changes that increase D7 retained activation without reducing 24-hour activation.\n- Use the all-new-user consistency check\n  `durable adoption yield = activation rate × D7 retained activation rate = D7 retained activated users ÷ eligible new users`.\n- Use action reach and activation time only to diagnose why the primary metrics moved.\n\n**Cohort And Lateness Policy**\n\n- A 24-hour cohort is excluded until every included user’s 24-hour window has closed.\n- A D7 cohort is excluded until its complete D7 calendar day has ended in Asia/Shanghai; partial D7 days are never reported.\n- Mark D7 results provisional for 48 hours after D7 closes and recompute them from the full event history to absorb late events.\n- Finalize after that buffer. Later backfills should restate affected cohorts.\n- Because no ingestion timestamp is supplied, event lateness cannot be identified or audited directly; the 48-hour buffer is an operating assumption that requires later validation.\n\n**Measurement Gaps**\n\n- No canonical successful-registration event name or success indicator is specified.\n- There is no invitee or assignee identifier, invitation acceptance status, or workspace identifier. Consequently, activation and D7 behavior are collaboration proxies, not proof of multi-user adoption.\n- The contract depends on `project_id` being populated consistently for all four activation actions.\n- There is no event identifier or ingestion timestamp for deduplication and lateness monitoring. User-level existence metrics reduce duplicate sensitivity but do not solve it.\n- The meaning of `user_id` on `assign_task` must be the actor, not the assignee.\n- `is_internal` is treated as eligibility at registration; mutable or event-specific semantics would require clarification.\n\n**Assumptions**\n\n1. A canonical successful-registration event can be identified, with its earliest occurrence defining registration.\n2. `user_id` identifies the acting user on candidate action events.\n3. Candidate action events represent successful completed actions.\n4. `project_id` is stable and non-null for those actions.\n5. `event_time` is the occurrence timestamp and can be converted to Asia/Shanghai.\n6. A 48-hour D7 finalization buffer is initially adequate.",
+    "Birch": "**Recommendation**\n\nUse a decision-specific KPI tree:\n\n1. **Primary outcome:** D7 durable-adoption yield.\n2. **Drivers:** 24h activation rate and D7 retained activation rate.\n3. **Diagnostics:** 24h action reach and activation latency.\n\nThe requested D7 retained activation rate is a quality indicator for activated users, not a universal north-star metric. It can rise merely because fewer, higher-intent users qualify as activated.\n\n**Metric Definitions**\n\nLet:\n\n- `t0(u)` be user `u`’s first successful registration time.\n- `D0(u)` be the calendar date containing `t0(u)` in `Asia/Shanghai`.\n- `N_c` be distinct non-internal new users registered in cohort `c`.\n- Work actions `W = {create_project, create_task}`.\n- Coordination actions `K = {invite_teammate, assign_task}`.\n- D7 core actions `C = {create_task, assign_task}`.\n\n**Final activation definition v1:** A user activates when, within `[t0, t0 + 24 hours)`, they perform at least one action from `W` and one from `K` with the same non-null `project_id`. Event order is unrestricted.\n\nThis paired milestone accommodates both creating a project and contributing to an existing project. It excludes isolated setup activity.\n\n| KPI | Business meaning | Formula and window | Grain and use |\n|---|---|---|---|\n| **D7 durable-adoption yield** | Share of all new users who activate promptly and return for meaningful work | `|R_c| / |N_c|`, where `R_c` contains activated users performing a `C` action on local calendar day `D0+7` | User binary, aggregated by registration cohort. Primary onboarding decision KPI |\n| **24h activation rate** | Reach of the activation experience | `|A_c| / |N_c|` using activation definition v1 | Leading driver; reveals whether onboarding gets enough users to the milestone |\n| **D7 retained activation rate** | Quality and durability of users reached by activation | `|R_c| / |A_c|` | Denominator is strictly activated new users, as requested. Undefined when `|A_c|=0` |\n| **24h action reach** | Location of onboarding friction | For each candidate action `a`: distinct users performing `a` within 24 hours divided by `|N_c|` | Diagnostic only; rates must not be summed |\n| **Activation latency** | Speed at which successful users reach activation | Median elapsed time from `t0` to completion of the paired activation condition, among `A_c` | Diagnostic only because it excludes non-activators |\n\nFor D7, the observation window is:\n\n`[00:00 on D0+7, 00:00 on D0+8)` in `Asia/Shanghai`.\n\nAny qualifying project may be used on D7; it need not be the project involved in activation.\n\n**Decision Rule**\n\nOptimize D7 durable-adoption yield. Use its exact decomposition:\n\n`D7 durable-adoption yield = 24h activation rate × D7 retained activation rate`\n\nThis identity must hold for the same mature cohort. An onboarding change should not be judged successful from retained activation alone if total durable-adoption yield declines.\n\n**Reporting And Segmentation**\n\n- Count each `user_id` once per cohort and show numerator, denominator, and rate.\n- Aggregate weekly results by summing user counts, not averaging daily percentages.\n- Permitted breakdowns are registration cohort and qualifying event/action path.\n- Use `project_id` for same-project matching and data-quality checks, not as a general business segment.\n- Acquisition source, device, geography, plan, role, team, experiment variant, invite acceptance, and assignee type are unavailable and must not be inferred.\n\n**Late Cohorts**\n\nA cohort is reportable only after its complete local D7 window has closed and the documented event-latency buffer has elapsed. Immature cohorts remain **pending**, rather than being counted as zero.\n\nNo latency buffer is supplied. Until one is established from the event pipeline SLA, results must be labeled preliminary. Late registration, activation, or D7 events should trigger full cohort backfills and a revised status; they must not be assigned to the current reporting cohort.\n\n**Assumptions And Gaps**\n\n- `event_name` can identify successful registration, although its exact taxonomy value was not supplied.\n- `user_id` is a stable identifier for the registered account and identifies the actor of subsequent events.\n- The source timezone and semantics of `event_time` are known before conversion to `Asia/Shanghai`.\n- Candidate actions reliably populate `project_id`; otherwise activation v1 cannot be evaluated as defined.\n- `assign_task` does not reveal whether a task was assigned to oneself or a teammate, and `invite_teammate` does not show acceptance.\n- The supplied actions emphasize creation and administration. Collaborator-only adoption, such as viewing, commenting, completing, or responding, is not measurable.\n- One D7 action is point retention, not proof of long-term or team-level adoption. Activation v1 should be versioned and later validated against longer-term outcomes.\n- Descriptive cohort movement cannot establish causal onboarding impact because no experiment assignment field is available.",
+    "Cobalt": {
+      "summary": "The KPI portfolio is contextual and modular for the current durable-adoption decision. D7 retained activation rate is the current core outcome metric, supported by two activation process metrics, one conditional guardrail, and one optional diagnostic. Registration mapping, final activation criteria, the agreed D7 action set, event-time representation, and observable late-arrival metadata remain dependency gaps.",
+      "assumptions": [
+        "For candidate definitions, within 24 hours means the half-open elapsed-time interval from registration event_time through, but not including, registration event_time plus 24 hours.",
+        "D7 means 00:00:00 inclusive through the next 00:00:00 exclusive on the Asia/Shanghai calendar date seven days after the Asia/Shanghai registration date.",
+        "The onboarding team is the candidate metric owner.",
+        "The 48-hour publication holdback and seven-day restatement period are candidate operating policies, not approved business definitions.",
+        "The four supplied candidate activation actions remain exploratory inputs and are not silently treated as the final activation rule or agreed D7 core-action set.",
+        "The portfolio applies to the current onboarding durable-adoption decision and is not a universal KPI set for other products, stages, or decisions.",
+        "Optional diagnostic segments may overlap and indicate association rather than causation."
+      ],
+      "metrics": [
+        {
+          "business_definition": "Among users who satisfy the final activation definition within 24 hours after registration, the share who perform at least one agreed core collaboration action on calendar day D0+7 in Asia/Shanghai.",
+          "data_risks": [
+            "The successful-registration event_name mapping is missing.",
+            "The final 24-hour activation definition is unresolved.",
+            "The agreed D7 core collaboration action set is unresolved.",
+            "The supplied fields lack an ingestion timestamp, so individual late arrivals cannot be detected or measured.",
+            "The source timezone and normalization rules for event_time are not supplied.",
+            "Recent cohorts may be understated if events arrive after the candidate holdback or restatement period."
+          ],
+          "dimensions": [
+            "First-successful-registration cohort calendar date in Asia/Shanghai"
+          ],
+          "field_dependencies": [
+            "user_id",
+            "event_name",
+            "event_time",
+            "is_internal"
+          ],
+          "formula": "100 × distinct user_id values that are non-internal new users, satisfy the final activation definition during [first successful registration event_time, registration event_time + 24 elapsed hours), and have at least one event_name in the agreed core collaboration action set during the complete Asia/Shanghai calendar date equal to registration date + 7, divided by distinct user_id values that are non-internal new users and satisfy that same final activation definition during the same 24-hour elapsed-time window.",
+          "grain": "One aggregate rate per Asia/Shanghai first-successful-registration cohort date.",
+          "metric_id": "d7_retained_activation_rate",
+          "name": "D7 retained activation rate",
+          "owner": "Onboarding team",
+          "source": "request_bf8fb064db57b37a and approved Business output stage_artifact-27e281f3c351443b",
+          "status": "candidate",
+          "time_window": "Activation eligibility uses 24 elapsed hours from registration; retained activity uses calendar day D0+7 from 00:00 inclusive to D0+8 00:00 exclusive in Asia/Shanghai. Candidate publication policy holds the cohort until 48 hours after D7 closes and restates daily for seven additional calendar days.",
+          "type": "core",
+          "version": 2
+        },
+        {
+          "business_definition": "The share of non-internal new users who satisfy the final activation definition within 24 elapsed hours of their first successful registration.",
+          "data_risks": [
+            "The successful-registration event_name mapping is missing.",
+            "The final activation action combination, sequence, or threshold is unresolved.",
+            "The source timezone and normalization rules for event_time are not supplied.",
+            "Duplicate or corrected registration events could change first-registration selection because no deduplication policy is supplied."
+          ],
+          "dimensions": [
+            "First-successful-registration cohort calendar date in Asia/Shanghai"
+          ],
+          "field_dependencies": [
+            "user_id",
+            "event_name",
+            "event_time",
+            "is_internal"
+          ],
+          "formula": "100 × distinct user_id values satisfying the final activation definition during [first successful registration event_time, registration event_time + 24 elapsed hours) divided by distinct user_id values whose first successful registration has is_internal = false.",
+          "grain": "One aggregate rate per Asia/Shanghai first-successful-registration cohort date.",
+          "metric_id": "activation_rate_24h",
+          "name": "24-hour activation rate",
+          "owner": "Onboarding team",
+          "source": "request_bf8fb064db57b37a and approved Business output stage_artifact-27e281f3c351443b",
+          "status": "candidate",
+          "time_window": "The half-open elapsed-time interval from first successful registration event_time through, but not including, registration event_time plus 24 hours.",
+          "type": "process",
+          "version": 2
+        },
+        {
+          "business_definition": "For each supplied candidate activation action, the share of non-internal new users who perform that action within 24 elapsed hours of first successful registration.",
+          "data_risks": [
+            "The successful-registration event_name mapping is missing.",
+            "Candidate action reach does not establish which actions or combinations constitute final activation.",
+            "A user may reach multiple actions, so action-level rates are non-additive.",
+            "The source timezone and normalization rules for event_time are not supplied."
+          ],
+          "dimensions": [
+            "First-successful-registration cohort calendar date in Asia/Shanghai",
+            "Candidate action event_name"
+          ],
+          "field_dependencies": [
+            "user_id",
+            "event_name",
+            "event_time",
+            "is_internal"
+          ],
+          "formula": "For each event_name in {create_project, create_task, invite_teammate, assign_task}: 100 × distinct non-internal new-user user_id values having that event_name during [first successful registration event_time, registration event_time + 24 elapsed hours) divided by all distinct non-internal new-user user_id values in the same registration cohort.",
+          "grain": "One aggregate rate per Asia/Shanghai first-successful-registration cohort date and candidate action event_name.",
+          "metric_id": "candidate_action_reach_24h",
+          "name": "24-hour candidate activation-action reach",
+          "owner": "Onboarding team",
+          "source": "request_bf8fb064db57b37a and approved Business output stage_artifact-27e281f3c351443b",
+          "status": "candidate",
+          "time_window": "The half-open elapsed-time interval from first successful registration event_time through, but not including, registration event_time plus 24 hours.",
+          "type": "process",
+          "version": 1
+        },
+        {
+          "business_definition": "Use this conditional guardrail only when internal account volume is material, volatile, or suspected of affecting eligibility: it measures the share of accounts identified as internal at first successful registration so the team can monitor population-mix sensitivity around the required exclusion of internal users.",
+          "data_risks": [
+            "The successful-registration event_name mapping is missing.",
+            "The timing and mutability semantics of is_internal are not supplied.",
+            "Duplicate or corrected registrations could alter first-registration classification.",
+            "The source timezone and normalization rules for event_time are not supplied.",
+            "No approved threshold defines when internal volume or volatility is material, so guardrail activation requires contextual judgment.",
+            "This metric monitors internal-account mix but cannot by itself prove that downstream exclusions were implemented correctly."
+          ],
+          "dimensions": [
+            "First-successful-registration cohort calendar date in Asia/Shanghai"
+          ],
+          "field_dependencies": [
+            "user_id",
+            "event_name",
+            "event_time",
+            "is_internal"
+          ],
+          "formula": "100 × distinct user_id values whose first successful registration has is_internal = true divided by all distinct user_id values with a first successful registration.",
+          "grain": "One aggregate rate per Asia/Shanghai first-successful-registration cohort date.",
+          "metric_id": "internal_registration_share",
+          "name": "Internal-registration share",
+          "owner": "Onboarding team",
+          "source": "request_bf8fb064db57b37a and approved Business output stage_artifact-27e281f3c351443b",
+          "status": "candidate",
+          "time_window": "Measured at each user's first successful registration event_time and reported by its Asia/Shanghai calendar date; include in routine monitoring only while the conditional-use criteria are present.",
+          "type": "guardrail",
+          "version": 2
+        },
+        {
+          "business_definition": "Use this optional diagnostic only when the core D7 retained activation rate needs investigation: for each supplied candidate action, measure D7 retained activation among activated new users who performed that action within 24 elapsed hours of registration. It is an overlapping behavioral decomposition, not a routine outcome KPI or causal estimate.",
+          "data_risks": [
+            "The successful-registration event_name mapping is missing.",
+            "The final 24-hour activation definition is unresolved.",
+            "The agreed D7 core collaboration action set is unresolved.",
+            "Users may perform multiple candidate actions, so diagnostic segments overlap and are non-additive.",
+            "Observed differences are associations and must not be interpreted as causal effects of the candidate actions.",
+            "The supplied fields lack an ingestion timestamp, so individual late arrivals cannot be detected or measured.",
+            "The source timezone and normalization rules for event_time are not supplied.",
+            "Small action-level cohorts may produce unstable rates."
+          ],
+          "dimensions": [
+            "First-successful-registration cohort calendar date in Asia/Shanghai",
+            "Candidate action event_name"
+          ],
+          "field_dependencies": [
+            "user_id",
+            "event_name",
+            "event_time",
+            "is_internal"
+          ],
+          "formula": "For each event_name in {create_project, create_task, invite_teammate, assign_task}: 100 × distinct user_id values that are non-internal new users, satisfy the final activation definition within 24 elapsed hours, perform that candidate event_name within the same 24-hour window, and perform at least one agreed core collaboration action on Asia/Shanghai calendar day D0+7, divided by distinct user_id values that are non-internal new users, satisfy the final activation definition within 24 elapsed hours, and perform that candidate event_name within the same 24-hour window.",
+          "grain": "One diagnostic rate per Asia/Shanghai first-successful-registration cohort date and candidate action event_name.",
+          "metric_id": "d7_retained_activation_rate_by_24h_action",
+          "name": "D7 retained activation rate by 24-hour candidate action",
+          "owner": "Onboarding team",
+          "source": "request_bf8fb064db57b37a and approved Business output stage_artifact-27e281f3c351443b",
+          "status": "candidate",
+          "time_window": "Activation and candidate-action membership use the half-open 24 elapsed-hour interval from registration; retained activity uses calendar day D0+7 from 00:00 inclusive to D0+8 00:00 exclusive in Asia/Shanghai. Apply the same candidate 48-hour publication holdback and seven-day restatement policy as the core D7 metric.",
+          "type": "diagnostic",
+          "version": 1
+        }
+      ],
+      "risks": [
+        "D7 retained activation rate cannot be operationalized until the successful-registration mapping, final activation rule, and agreed D7 core-action set are approved.",
+        "The candidate late-arrival policy is schedule-based because the supplied schema has no ingestion timestamp.",
+        "Unknown event_time storage timezone or conversion behavior could misclassify elapsed 24-hour boundaries and Asia/Shanghai calendar days.",
+        "No registration-cohort reporting range is supplied.",
+        "No first-registration deduplication or correction policy is supplied.",
+        "Conditional guardrail use lacks an approved materiality threshold.",
+        "Optional action-level diagnostics may be unstable and cannot establish causality."
+      ],
+      "open_questions": [
+        "What event_name identifies a successful registration?",
+        "What exact action combination, sequence, or threshold is the final 24-hour activation definition?",
+        "Which of create_project, create_task, invite_teammate, and assign_task form the agreed D7 core collaboration action set?",
+        "Is the candidate 48-hour holdback with seven days of restatement acceptable?",
+        "What timezone or offset does event_time use at rest?",
+        "What registration deduplication and correction policy defines the first successful registration?",
+        "What registration-cohort date range should be reported?",
+        "What contextual threshold should activate or retire the internal-registration-share guardrail?"
+      ],
+      "required_next_inputs": [
+        "Approved successful-registration event_name mapping.",
+        "Approved final 24-hour activation rule using only supported fields.",
+        "Approved D7 core collaboration action set.",
+        "Approved late-arrival holdback and restatement policy.",
+        "event_time storage-timezone and normalization specification.",
+        "First-successful-registration deduplication and correction policy.",
+        "Registration-cohort reporting date range.",
+        "Contextual materiality criteria for the conditional internal-registration-share guardrail."
+      ],
+      "consistency_checks": [
+        "Business-fit selection check: the portfolio was selected for the current onboarding durable-adoption decision, supported product context, available fields, and known risks; it is not presented as a universal four-metric or five-metric set.",
+        "Metric-layering check: D7 retained activation rate is the current core outcome metric; 24-hour activation rate and candidate activation-action reach are process drivers; internal-registration share is a conditional guardrail; D7 retained activation by 24-hour candidate action is an optional diagnostic. No north-star metric is asserted without broader business-outcome evidence.",
+        "Optionality check: internal-registration share is used only when internal traffic is material, volatile, or suspected of affecting eligibility, while the action-level D7 diagnostic is used only to investigate the core metric and is not a routine KPI or causal estimate.",
+        "User-edit reconciliation check: the add operation for D7 retained activation rate remains represented exactly once with its supplied name and business definition, and its denominator remains limited to activated new users. The add operation was not treated as automatic north-star designation.",
+        "Duplicate-name and duplicate-ID check: all five metric names and all five metric_id values are unique.",
+        "Denominator-consistency check: the core D7 metric denominator is exactly the distinct non-internal new users satisfying the final activation definition within the shared 24-hour elapsed-time window. The optional action-level diagnostic uses a documented subset of that activated-user denominator for each candidate action.",
+        "Time-window-consistency check: all activation eligibility and candidate-action membership use the same half-open 24 elapsed-hour window, while D7 uses a complete Asia/Shanghai calendar day. D7-based metrics share the same candidate holdback and restatement policy.",
+        "Field-support check: every field dependency is one of user_id, event_name, event_time, project_id, and is_internal. No unsupported field was introduced; ingestion-time metadata remains an explicit gap rather than an assumed dependency.",
+        "Version-change and deletion check: d7_retained_activation_rate changed type from north-star to core and is version 2; activation_rate_24h changed type from core to process and is version 2; candidate_action_reach_24h is definitionally unchanged and remains version 1; internal_registration_share changed its conditional definition, time-window guidance, and risks and is version 2; d7_retained_activation_rate_by_24h_action is new and starts at version 1. No prior metric IDs were deleted.",
+        "Prior-decision reconciliation check: the unapproved attempt-2 decision designating D7 retained activation rate as north-star was not preserved. The attempt-2 artifact was used only as a version baseline.",
+        "No-conflict result: no contradiction remains between the approved Request, approved Business output, and this revision. Unresolved registration, activation, action-set, time-normalization, deduplication, late-arrival, reporting-range, and guardrail-threshold items remain dependency gaps and data risks."
+      ],
+      "independent_review": {
+        "summary": "The contextual KPI contract passes for metric-design use with non-blocking risks. It exactly preserves the requested D7 metric, applies supported fields and appropriate metric roles, handles cohort maturity through a disclosed candidate policy, avoids unsupported causality, and matches registered lineage; implementation dependencies, null handling, sample-size policy, and prior-version evidence remain caveats.",
+        "decision": "PASS_WITH_RISKS",
+        "findings": [
+          {
+            "severity": "P2",
+            "summary": "The KPI portfolio is suitable for the requested selection decision, but implementation remains dependent on unresolved registration mapping, activation-rule, D7 action-set, event-time normalization, deduplication, reporting-range, and late-arrival policy inputs. These dependencies are explicitly disclosed and are non-blocking for this metric-design-only route."
+          },
+          {
+            "severity": "P3",
+            "summary": "Applicability and data-quality policies could be more operational: the conditional guardrail has no approved materiality threshold, the optional diagnostic identifies small-cohort instability without a minimum sample-size or suppression rule, and required-field null treatment is unspecified."
+          },
+          {
+            "severity": "P3",
+            "summary": "The approved Metrics output cites unapproved attempt 2 only as its version baseline, so prior-definition transitions and the no-deletion claim cannot be independently reverified from the allowed evidence set. Current metric IDs and versions nevertheless match registered lineage, with no registered break."
+          }
+        ],
+        "optional_improvements": [
+          "Approve the unresolved implementation inputs before calculating or publishing any metric.",
+          "Define null eligibility rules, zero-denominator behavior, and a minimum sample-size or suppression policy for action-level diagnostics.",
+          "Define a contextual materiality threshold for activating or retiring the internal-registration-share guardrail.",
+          "Include an approved prior-version baseline in future review evidence when version-transition verification is required."
+        ]
+      }
+    }
+  }
+}

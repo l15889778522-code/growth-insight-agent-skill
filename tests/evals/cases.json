@@ -14,6 +14,7 @@
       "case_id": "metric-design-custom-edit",
       "task_type": "metric design",
       "request": "Design activation KPIs, then add a user-defined seven-day retained activation metric.",
+      "input_snapshot": "tests/evals/inputs/metric-design-custom-edit.json",
       "provided_inputs": ["business_question", "product_definition"],
       "required_roles": ["growth-business", "growth-metrics", "growth-review"],
       "forbidden_roles": ["growth-sql", "growth-insight", "growth-visualization", "growth-report"],

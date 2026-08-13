@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "mode": "single-codex",
+  "case_id": "metric-design-custom-edit",
+  "repeat": 1,
+  "root_agent_id": "019ff92d-f320-70d0-ba0e-94da1c5a7cc3",
+  "root_agent_nickname": "Singer",
+  "started_at": "2026-08-13T03:32:30.374Z",
+  "finished_at": "2026-08-13T03:36:46.773Z",
+  "elapsed_ms": 256399,
+  "status": "completed",
+  "reported_descendant_agents": [],
+  "descendant_trace_source": "evaluation Agent final response; parent runtime did not expose a descendant tool trace",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "max",
+  "token_usage": null,
+  "missing_runtime_metadata": [
+    "input_tokens",
+    "output_tokens",
+    "total_tokens"
+  ],
+  "reported_tool_use": [],
+  "isolation_violations": []
+}

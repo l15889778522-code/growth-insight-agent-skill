@@ -326,7 +326,7 @@ def derive_record(
     run_dir: Path,
     case: dict[str, Any],
     *,
-    mode: str = "v1.2",
+    mode: str = "controlled-skill",
     quality_review_path: Path | None = None,
     notes: list[str] | None = None,
 ) -> dict[str, Any]:
@@ -439,7 +439,7 @@ def main() -> int:
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--cases", type=Path, default=Path("tests/evals/cases.json"))
     parser.add_argument("--case-id", required=True)
-    parser.add_argument("--mode", choices=("v1.2",), default="v1.2")
+    parser.add_argument("--mode", choices=("controlled-skill",), default="controlled-skill")
     parser.add_argument("--quality-review", type=Path)
     parser.add_argument("--note", action="append", default=[])
     parser.add_argument("--output", type=Path, required=True)
