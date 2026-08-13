@@ -1,7 +1,7 @@
 # Multi-Agent Data Analysis Skill v1.2 项目交接文档
 
 文档状态：`CURRENT_HANDOFF`
-交接基线日期：`2026-08-12`
+交接基线日期：`2026-08-13`
 适用仓库：`l15889778522-code/growth-insight-agent-skill`
 当前合同版本：`1.2`
 
@@ -84,12 +84,12 @@
 | PR 地址 | `https://github.com/l15889778522-code/growth-insight-agent-skill/pull/1` | `DONE` |
 | v1.2 主提交 | `a5e42a3 Implement auditable data analysis skill v1.2` | `DONE` |
 | 最新 v1.2.1 收尾实现提交 | `83f2274 Harden interrupted MySQL streams` | `DONE` |
-| 本地与远端分支 | 本地已完成第三轮 MySQL 修复，须在本次推送后复核远端 | `PARTIAL` |
+| 本地与远端分支 | 已同步到确定性发布门全绿基线，本文档状态提交后再次推送 | `DONE` |
 | PR 合并 | 尚未合并 | `BLOCKED` |
 | `v1.2.1` 标签 | 尚未创建 | `BLOCKED` |
 | GitHub Release | 尚未创建 | `BLOCKED` |
 
-v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布收尾以 `83f2274` 为最新实现基线。Windows/Ubuntu 六版本矩阵与两套干净安装已在 Actions run `31585533177` 全部通过；MySQL 8.4 已真实启动并执行到超时场景，但完整发布门仍需第三轮确认。第二台 Codex 验收尚未执行，真实三模式评测已按用户要求暂缓，因此当前仍不能描述为正式发布。
+v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布收尾以 `83f2274` 为最新实现基线。Actions run `31656838504` 已在同一最新代码基线上完成 Windows/Ubuntu 六版本矩阵、两套干净安装和真实 MySQL 8.4，九项检查全部通过。第二台 Codex 验收尚未执行，真实三模式评测已按用户要求暂缓，因此当前仍不能描述为正式发布。
 
 ### 2.2 版本语义
 
@@ -177,15 +177,15 @@ v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布�
 
 ### 3.4 数据库和 SQL
 
-总体状态：`PARTIAL`
+总体状态：`DONE`（v1.2 当前支持的 SQLite/MySQL 范围）
 
 | 能力 | 代码存在 | 自动测试 | 真实环境 | 结论 |
 |---|---|---|---|---|
 | SQLite 只读查询 | `DONE` | `DONE` | `DONE`（本地文件数据库） | `DONE` |
-| MySQL 连接器 | `DONE` | `DONE` | MySQL 8.4 已真实运行，完整门待第三轮 | `PARTIAL` |
+| MySQL 连接器 | `DONE` | `DONE` | MySQL 8.4.11 已真实验证 | `DONE` |
 | SQL AST 只读校验 | `DONE` | `DONE` | `DONE` | `DONE` |
 | TLS 和服务器身份指纹 | `DONE` | `DONE`（mock/合同和 opt-in 测试） | MySQL 8.4 已验证 | `DONE` |
-| 流式查询和限制 | `DONE` | `DONE` | `PARTIAL` | `PARTIAL` |
+| 流式查询和限制 | `DONE` | `DONE` | `DONE` | `DONE` |
 
 已实现细节：
 
@@ -202,12 +202,12 @@ v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布�
 - GitHub Actions 已增加独立 MySQL 8.4 服务任务，自动创建 2505 行 `utf8mb4` 测试数据、`REQUIRE SSL` 且仅授予 `SELECT` 的临时账号，并从实际服务器身份导出不含凭据的数据源指纹。
 - opt-in 发布门测试已覆盖真实 TLS 协商、账号授权、写入拒绝、流式读取、1000 行截断、100 字节结果拒绝、Decimal 精确值、Unicode、服务端/连接超时、连接中断和新连接重试。
 
-真实验证缺口：
+真实验证结果：
 
-- Actions run `31585533177` 已真实启动 MySQL 8.4.11，成功完成 TLS 只读账号、2505 行 fixture、物理身份指纹、Decimal/Unicode、行数截断、结果字节拒绝和写入拒绝；随后超时用例因测试本身使用被安全层禁止的 `SLEEP()` 而失败。
-- `83f2274` 保持 `SLEEP()` 禁止规则不变，改用管理员写锁验证普通 `SELECT` 超时，并用大 payload 流式查询验证中途断连；该修复待第三轮远端结果。
+- Actions run `31656838504` 已真实启动 MySQL 8.4.11，完成 TLS 只读账号、2505 行 fixture、物理身份指纹、Decimal/Unicode、行数截断、结果字节拒绝、写入拒绝、普通 `SELECT` 锁等待超时、中途断连和新连接重试。
+- `83f2274` 保持 `SLEEP()` 禁止规则不变，使用管理员写锁验证超时，并在大 payload 流式查询传输中验证强制断连；未通过放宽 SQL 安全规则制造测试便利。
 - 断连后的连接器重连由真实 opt-in 测试覆盖；执行租约的中断、abort 和重新申请仍由离线确定性测试覆盖，两类证据不能混写。
-- 因此不能将 MySQL 描述为真实集成完成；发布状态保持 `PARTIAL/BLOCKED`。
+- 因此 MySQL 可在 v1.2 当前支持范围内标记为真实集成 `DONE`；PostgreSQL 仍是 v1.4 的 `NOT_STARTED` 项，不影响本结论。
 
 ### 3.5 数据质量、图表、血缘和报告
 
@@ -278,16 +278,16 @@ v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布�
 | 证据 | 当前结果 | 状态 |
 |---|---|---|
 | 本地离线测试 | `137 passed, 2 skipped`，2026-08-13 | `DONE` |
-| 跳过测试 | 两个真实 MySQL opt-in 发布门；仅在 `RUN_MYSQL_INTEGRATION=1` 时运行 | `PARTIAL` |
+| 跳过测试 | 本地离线运行跳过两个 opt-in MySQL 测试；Actions 已显式启用并通过 | `DONE` |
 | Windows 安装器专项 | `10 passed` | `DONE` |
 | Windows 全新中文目录安装生命周期 | 依赖、预检、verify、卸载和残留检查全部通过 | `DONE` |
 | 分支覆盖率 | 约 `75%` | `PARTIAL` |
-| Ubuntu Python 3.11/3.12/3.13 | Actions run `31585533177` 全部通过 | `DONE` |
-| Windows Python 3.11/3.12/3.13 | Actions run `31585533177` 全部通过 | `DONE` |
-| GitHub 干净安装 Ubuntu/Windows | Actions run `31585533177` 两套全部通过 | `DONE` |
-| GitHub MySQL 8.4 | 真实环境与前置断言通过；中断场景修复待第三轮 | `PARTIAL` |
+| Ubuntu Python 3.11/3.12/3.13 | Actions run `31656838504` 全部通过 | `DONE` |
+| Windows Python 3.11/3.12/3.13 | Actions run `31656838504` 全部通过 | `DONE` |
+| GitHub 干净安装 Ubuntu/Windows | Actions run `31656838504` 两套全部通过 | `DONE` |
+| GitHub MySQL 8.4 | Actions run `31656838504` 完整发布门通过 | `DONE` |
 
-原 Windows 失败由 `Get-FileHash` 在 runner PowerShell 中不可用造成。`2b18c38` 改用 .NET `System.Security.Cryptography.SHA256` 后，Actions run `31585533177` 的 Windows Python 3.11、3.12、3.13 与 Windows 干净安装全部通过，该阻塞项已经关闭。
+原 Windows 失败由 `Get-FileHash` 在 runner PowerShell 中不可用造成。`2b18c38` 改用 .NET `System.Security.Cryptography.SHA256` 后，Actions run `31656838504` 的 Windows Python 3.11、3.12、3.13 与 Windows 干净安装全部通过，该阻塞项已经关闭。
 
 #### 评测基础设施
 
@@ -308,11 +308,11 @@ v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布�
 优先级：最高，完成前不得开始 v1.3。
 
 1. `DONE`：已使用兼容 Windows PowerShell 的 .NET SHA-256 文件计算函数替换两处 `Get-FileHash`，本地专项通过。
-2. `DONE`：Windows、Ubuntu 上 Python 3.11、3.12、3.13 已在 Actions run `31585533177` 全部通过。
+2. `DONE`：Windows、Ubuntu 上 Python 3.11、3.12、3.13 已在 Actions run `31656838504` 全部通过。
 3. `DONE`：CI 已调整为 PR 检查加 `main` push，功能分支 push 不再与 PR 同时生成两套矩阵。
 4. `DONE`：本地 Windows 中文目录生命周期和 GitHub 干净检出的 Ubuntu/Windows 独立任务均已通过。
-5. `DONE`：GitHub Actions 临时 MySQL 8.4 服务、一次性 Schema、2505 行测试数据、TLS 只读账号和无凭据身份输出已在 run `31585533177` 真实运行。
-6. `PARTIAL`：真实 MySQL 已通过只读拒绝、TLS、行数/字节限制、流式读取、`utf8mb4` 和 Decimal；`83f2274` 修复超时与中途断连场景，待第三轮远端通过。执行租约恢复继续由离线测试证明。
+5. `DONE`：GitHub Actions 临时 MySQL 8.4 服务、一次性 Schema、2505 行测试数据、TLS 只读账号和无凭据身份输出已在 run `31656838504` 真实运行。
+6. `DONE`：真实 MySQL 已通过只读拒绝、TLS、超时、行数/字节限制、流式读取、`utf8mb4`、Decimal、中途断连和新连接重试。执行租约恢复继续由离线测试证明。
 7. `BLOCKED`：在真实第二台同账号 Codex 上克隆仓库，安装 Skill 和 Agent，重启 Codex 后启动至少一个可见原生 Agent，并记录合同版本和 Agent ID。
 8. `DEFERRED`：真实三模式评测按用户当前指令暂缓；在用户重新确认前不得启动任何真实 Agent 评测。
 9. `BLOCKED`：只有前述发布门通过后，才能将草稿 PR 转为可合并状态、合并到 `main`、创建 `v1.2.1` 标签和正式 GitHub Release。
@@ -505,7 +505,7 @@ v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布�
 
 ## 7. 当前交接验收记录
 
-2026-08-12 已继续执行不消耗模型额度的自动测试和发布收尾；未启动子 Agent、真实 Agent smoke、三模式评测或 DeepSeek 兼容测试。
+2026-08-13 已完成不消耗模型额度的自动测试和发布收尾；未启动子 Agent、真实 Agent smoke、三模式评测或 DeepSeek 兼容测试。
 
 | 检查项 | 预期 |
 |---|---|
@@ -517,9 +517,10 @@ v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布�
 | 文档敏感信息 | 不包含密码、令牌、私钥或可用数据库连接串 |
 | 本地测试执行 | `137 passed, 2 skipped`；安装器专项 `10 passed` |
 | 干净安装 | 当前 Windows 中文目录和 GitHub Ubuntu/Windows 全部通过 |
-| MySQL | 8.4 真实环境和前置断言通过；超时/断连修复待第三轮，整体仍为 `PARTIAL` |
+| 远端 CI | Actions run `31656838504` 九项全部通过 |
+| MySQL | MySQL 8.4.11 真实发布门完整通过，状态 `DONE` |
 | 子 Agent | 本次不启动 |
 | 功能代码 | 仅修改确定性发布门，不修改 Agent 角色能力或模型配置 |
-| GitHub 推送 | 本文档提交后随实现一次推送；推送后须更新远端 CI 结果 |
+| GitHub 推送 | 实现和证据已推送；本文档最终状态提交后再推送一次 |
 
 后续如果仓库、分支、PR、测试结果、真实验证或发布状态发生变化，应在同一交付任务中更新本文件，避免下一次 Codex 依据过期状态继续工作。
