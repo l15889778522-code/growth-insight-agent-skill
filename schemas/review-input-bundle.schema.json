@@ -34,7 +34,21 @@
         "properties": {
           "stage_id": {"type": "string", "minLength": 1},
           "artifact_sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
-          "decision": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "object"}]}
+          "decision": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "supporting_artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["artifact_id", "kind", "path", "sha256"],
+        "properties": {
+          "artifact_id": {"type": "string", "minLength": 1},
+          "kind": {"enum": ["metric_lineage_latest", "query_manifest", "query_result", "result_profile", "chart_manifest"]},
+          "path": {"type": "string", "minLength": 1},
+          "sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"}
         }
       }
     },

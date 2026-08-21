@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.2",
+  "run_id": "instagram-full-smoke-fix-20260820",
+  "stage_id": "s07-report",
+  "attempt": 1,
+  "agent_id": "01a02326-28d6-7260-b688-ccf4eefc2b48",
+  "role": "growth-report",
+  "test_mode": "review-fail-continuation",
+  "formal_registered": false,
+  "stage_status": "BLOCKED",
+  "model": null,
+  "model_reasoning_effort": "high",
+  "token_usage": null,
+  "reason": "Standalone contract test only; the formal run correctly blocks Report when Review is FAIL.",
+  "raw_response_path": "tests/evidence/report-after-review-fail/attempt-1/raw-response.txt",
+  "parsed_stage_path": "tests/evidence/report-after-review-fail/attempt-1/parsed-stage.json",
+  "validation_report_path": "tests/evidence/report-after-review-fail/attempt-1/validation-report.json",
+  "stage_report_path": "tests/evidence/report-after-review-fail/attempt-1/stage-report.md"
+}

@@ -12,6 +12,7 @@ from conftest import (
     approve_pending,
     bind_route_inputs,
     materialize_stage,
+    metric,
     route_plan,
     stage_output,
     write_json,
@@ -184,6 +185,44 @@ def test_record_stage_requires_an_agent_execution_receipt(approved_run) -> None:
 
     with pytest.raises(ValueError, match="no Agent execution receipt"):
         record_stage(run_dir, stage_path, markdown_path, validation_path)
+
+
+def test_record_stage_marks_malformed_common_fields_failed_without_runtime_crash(approved_run) -> None:
+    run_dir, _ = approved_run(["growth-business"])
+    start_stage(run_dir, "s01-business")
+    output = stage_output("growth-business", "test-run", "s01-business", 1)
+    output["data_artifacts"] = ["request.json"]
+    _, stage_path, markdown_path, validation_path = _stage_files(run_dir, output)
+
+    with pytest.raises(ValueError, match="Stage output is invalid") as error:
+        record_stage(run_dir, stage_path, markdown_path, validation_path)
+
+    assert "data_artifacts" in str(error.value)
+    state = load_state(run_dir)
+    assert state["status"] == "failed"
+    assert state["stages"][0]["runtime"]["failure_class"] == "stage_validation_failed"
+
+
+def test_v12_confirmed_decisions_reject_wrapper_objects() -> None:
+    output = stage_output("growth-business", "test-run", "s01-business", 1)
+    output["confirmed_decisions"] = [{"decision": "Use booked revenue."}]
+
+    errors = validate_stage(output, "growth-business", "test-run", "s01-business", 1)
+
+    assert any("confirmed_decisions" in error for error in errors)
+
+
+def test_sql_stage_must_account_for_every_approved_metric(approved_run) -> None:
+    run_dir, _ = approved_run(["growth-metrics", "growth-sql"])
+    start_stage(run_dir, "s01-metrics")
+    metrics = [metric(), metric("order_count", formula="COUNT(order_id)")]
+    materialize_stage(run_dir, stage_output("growth-metrics", "test-run", "s01-metrics", 1, metrics=metrics))
+    approve_pending(run_dir, "stage", "approve-two-metrics")
+    start_stage(run_dir, "s02-sql")
+    sql_output = stage_output("growth-sql", "test-run", "s02-sql", 1)
+
+    with pytest.raises(ValueError, match="did not map or explicitly mark unsupported metric IDs: order_count"):
+        materialize_stage(run_dir, sql_output)
 
 
 def test_agent_receipt_is_single_use_and_binds_raw_response(approved_run) -> None:

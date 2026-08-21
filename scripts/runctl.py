@@ -100,6 +100,57 @@ def _validate_metric_lineage(value: dict[str, Any]) -> None:
     validate_schema(value, SCHEMA_DIR / schema)
 
 
+def _current_metric_lineage_record(
+    run_dir: Path,
+    state: dict[str, Any],
+    *,
+    required: bool = False,
+) -> dict[str, Any] | None:
+    records = [
+        item
+        for item in state.get("artifacts", [])
+        if item.get("kind") == "metric_lineage_latest" and not item.get("superseded_by")
+    ]
+    if not records:
+        if required:
+            raise ValueError("Review requires a current registered metric lineage artifact; build lineage before starting Review.")
+        return None
+    if len(records) != 1:
+        raise ValueError("Exactly one current metric lineage artifact is required.")
+    record = records[0]
+    path = resolve_within(run_dir, record.get("path", ""))
+    if not path.is_file() or sha256_file(path) != record.get("sha256"):
+        raise ValueError("Registered metric lineage is missing or changed.")
+    _validate_metric_lineage(load_json(path))
+    return record
+
+
+def _review_supporting_artifacts(run_dir: Path, state: dict[str, Any]) -> list[dict[str, Any]]:
+    supported_kinds = {
+        "metric_lineage_latest",
+        "query_manifest",
+        "query_result",
+        "result_profile",
+        "chart_manifest",
+    }
+    records: list[dict[str, Any]] = []
+    for artifact in state.get("artifacts", []):
+        if artifact.get("kind") not in supported_kinds or artifact.get("superseded_by"):
+            continue
+        path = resolve_within(run_dir, artifact.get("path", ""))
+        if not path.is_file() or sha256_file(path) != artifact.get("sha256"):
+            raise ValueError(f"Review supporting artifact is missing or changed: {artifact.get('path')}")
+        records.append(
+            {
+                "artifact_id": artifact["artifact_id"],
+                "kind": artifact["kind"],
+                "path": artifact["path"],
+                "sha256": artifact["sha256"],
+            }
+        )
+    return records
+
+
 def _validate_chart_manifest(value: dict[str, Any]) -> None:
     schema = (
         "chart-render-manifest-v1.2.schema.json"
@@ -761,6 +812,7 @@ def _build_review_input_bundle(run_dir: Path, state: dict[str, Any], stage: dict
         "review_stage_id": stage["stage_id"],
         "inputs": inputs,
         "approved_decisions": approved_decisions,
+        "supporting_artifacts": _review_supporting_artifacts(run_dir, state),
         "created_at": utc_now(),
     }
     validate_schema(bundle, SCHEMA_DIR / "review-input-bundle.schema.json")
@@ -921,6 +973,11 @@ def start_stage(run_dir: Path, stage_id: str) -> Path:
                 for item in reviews
             ):
                 raise ValueError("Report requires an approved Review result of PASS or PASS_WITH_RISKS.")
+        if stage["role"] == "growth-review" and any(
+            item["role"] == "growth-metrics" and item["status"] in {"approved", "completed"}
+            for item in state["stages"]
+        ):
+            _current_metric_lineage_record(run_dir, state, required=True)
         if stage.get("runtime") and not any(entry.get("attempt") == stage["runtime"].get("attempt") for entry in stage["attempt_history"]):
             stage["attempt_history"].append(deepcopy(stage["runtime"]))
         stage["attempt"] += 1
@@ -1277,20 +1334,6 @@ def _validate_stage_context(run_dir: Path, state: dict[str, Any], stage: dict[st
             errors.append(f"Approved input {dependency} changed while the stage was running.")
 
     ancestor_ids = _descendants_reverse(state, stage["stage_id"])
-    prior_decisions: dict[bytes, Any] = {}
-    for prior_stage in state["stages"]:
-        if prior_stage["stage_id"] not in ancestor_ids or prior_stage["status"] != "approved" or not prior_stage.get("artifact"):
-            continue
-        prior_output = _verified_stage_output(run_dir, prior_stage)
-        for decision in prior_output.get("confirmed_decisions", []):
-            prior_decisions.setdefault(json.dumps(decision, ensure_ascii=False, sort_keys=True).encode("utf-8"), decision)
-    current_decisions = {
-        json.dumps(decision, ensure_ascii=False, sort_keys=True).encode("utf-8")
-        for decision in value.get("confirmed_decisions", [])
-    }
-    missing_decisions = [decision for key, decision in prior_decisions.items() if key not in current_decisions]
-    if missing_decisions:
-        errors.append("Stage output omitted approved confirmed_decisions: " + json.dumps(missing_decisions, ensure_ascii=False, sort_keys=True))
 
     if stage["role"] == "growth-review":
         bundles = [
@@ -1337,7 +1380,29 @@ def _validate_stage_context(run_dir: Path, state: dict[str, Any], stage: dict[st
                                 "decision": decision,
                             }
                         )
-                if bundle["inputs"] != expected_inputs or bundle["approved_decisions"] != expected_decisions:
+                bundled_supporting = bundle.get("supporting_artifacts", [])
+                for supporting in bundled_supporting:
+                    registered = artifact_by_id(state, supporting["artifact_id"])
+                    registered_path = registered.get("path") or registered.get("json_path")
+                    if (
+                        registered.get("kind") != supporting["kind"]
+                        or registered_path != supporting["path"]
+                        or registered.get("sha256") != supporting["sha256"]
+                    ):
+                        raise ValueError(
+                            f"Review supporting artifact binding changed: {supporting['artifact_id']}"
+                        )
+                    supporting_path = resolve_within(run_dir, supporting["path"])
+                    if not supporting_path.is_file() or sha256_file(supporting_path) != supporting["sha256"]:
+                        raise ValueError(
+                            f"Review supporting artifact is missing or changed: {supporting['path']}"
+                        )
+                expected_supporting = _review_supporting_artifacts(run_dir, state) if stage["status"] == "running" else bundled_supporting
+                if (
+                    bundle["inputs"] != expected_inputs
+                    or bundle["approved_decisions"] != expected_decisions
+                    or bundled_supporting != expected_supporting
+                ):
                     errors.append("Review input bundle no longer matches the approved upstream artifacts.")
             except (OSError, KeyError, ValueError) as exc:
                 errors.append(f"Review input bundle validation failed: {exc}")
@@ -1454,14 +1519,62 @@ def _validate_stage_context(run_dir: Path, state: dict[str, Any], stage: dict[st
                             errors.append("Metric edit was not applied for field(s): " + ", ".join(sorted(mismatches)))
 
     if role == "growth-sql" and known_metrics:
-        referenced = []
-        for mapping in payload.get("field_mappings", []):
-            referenced.append(mapping.get("metric_id"))
-        for query in payload.get("queries", []):
-            referenced.extend(query.get("metric_ids", []))
+        mappings = payload.get("field_mappings", [])
+        queries = payload.get("queries", [])
+        unsupported = payload.get("unsupported_metrics", [])
+        mapping_ids = [mapping.get("metric_id") for mapping in mappings]
+        query_ids = [metric_id for query in queries for metric_id in query.get("metric_ids", [])]
+        referenced = mapping_ids + query_ids + unsupported
         unknown = sorted({item for item in referenced if item not in known_metrics})
         if unknown:
             errors.append("SQL output references unknown metric IDs: " + ", ".join(unknown))
+        # New registration rules must not retroactively invalidate immutable v1.2 artifacts.
+        if stage["status"] == "running":
+            if len(unsupported) != len(set(unsupported)):
+                errors.append("SQL unsupported_metrics contains duplicate metric IDs.")
+            accounted = set(mapping_ids) | set(unsupported)
+            missing = sorted(known_metrics - accounted)
+            if missing:
+                errors.append("SQL output did not map or explicitly mark unsupported metric IDs: " + ", ".join(missing))
+            supported_ids = {
+                mapping.get("metric_id")
+                for mapping in mappings
+                if mapping.get("supported")
+            }
+            unsupported_mapping_ids = {
+                mapping.get("metric_id")
+                for mapping in mappings
+                if not mapping.get("supported")
+            }
+            undeclared_unsupported = sorted(unsupported_mapping_ids - set(unsupported))
+            if undeclared_unsupported:
+                errors.append(
+                    "Unsupported SQL field mappings must also appear in unsupported_metrics: "
+                    + ", ".join(undeclared_unsupported)
+                )
+            overlap = sorted(supported_ids & set(unsupported))
+            if overlap:
+                errors.append("SQL metrics cannot be both supported and unsupported: " + ", ".join(overlap))
+            for mapping in mappings:
+                metric_id = mapping.get("metric_id")
+                if mapping.get("supported") and (
+                    not mapping.get("source_fields")
+                    or not mapping.get("sql_expression")
+                    or not mapping.get("result_column")
+                ):
+                    errors.append(f"Supported SQL metric {metric_id} requires source fields, SQL expression, and result column.")
+            executable_metric_ids = {
+                metric_id
+                for query in queries
+                if query.get("executable")
+                for metric_id in query.get("metric_ids", [])
+            }
+            missing_queries = sorted(supported_ids - executable_metric_ids)
+            if missing_queries:
+                errors.append("Supported SQL metrics are absent from executable queries: " + ", ".join(missing_queries))
+            unsupported_queries = sorted(set(unsupported) & executable_metric_ids)
+            if unsupported_queries:
+                errors.append("Unsupported SQL metrics cannot appear in executable queries: " + ", ".join(unsupported_queries))
 
     if role in {"growth-insight", "growth-report"} and known_metrics:
         collection = payload.get("observations", []) if role == "growth-insight" else payload.get("recommendations", [])
@@ -1549,32 +1662,19 @@ def _validate_stage_context(run_dir: Path, state: dict[str, Any], stage: dict[st
             if item["role"] == "growth-metrics" and item["status"] in {"approved", "completed"}
         ]
         if metric_stages:
-            lineage_records = [
-                item
-                for item in state["artifacts"]
-                if item.get("kind") == "metric_lineage_latest" and not item.get("superseded_by")
-            ]
-            if not lineage_records:
-                errors.append("Review requires a current registered metric lineage artifact.")
-            else:
-                lineage_record = lineage_records[-1]
-                lineage_path = resolve_within(run_dir, lineage_record["path"])
-                if not lineage_path.is_file() or sha256_file(lineage_path) != lineage_record["sha256"]:
-                    errors.append("Registered metric lineage is missing or changed.")
-                else:
-                    lineage = load_json(lineage_path)
-                    try:
-                        _validate_metric_lineage(lineage)
-                    except ValueError as exc:
-                        errors.append(str(exc))
-                    expected_breaks = {
-                        f"{metric['metric_id']}:{lineage_break}"
-                        for metric in lineage.get("metrics", [])
-                        for lineage_break in metric.get("breaks", [])
-                    }
-                    declared_breaks = set(payload.get("lineage_breaks", []))
-                    if declared_breaks != expected_breaks:
-                        errors.append("Review lineage_breaks must exactly match the registered metric lineage.")
+            try:
+                lineage_record = _current_metric_lineage_record(run_dir, state, required=True)
+                lineage = load_json(resolve_within(run_dir, lineage_record["path"]))
+                expected_breaks = {
+                    f"{metric['metric_id']}:{lineage_break}"
+                    for metric in lineage.get("metrics", [])
+                    for lineage_break in metric.get("breaks", [])
+                }
+                declared_breaks = set(payload.get("lineage_breaks", []))
+                if declared_breaks != expected_breaks:
+                    errors.append("Review lineage_breaks must exactly match the registered metric lineage.")
+            except ValueError as exc:
+                errors.append(str(exc))
         if decision == "PASS" and payload.get("lineage_breaks"):
             errors.append("Review cannot PASS while metric lineage breaks remain.")
         rollback = payload.get("rollback_stage")
@@ -1633,7 +1733,8 @@ def record_stage(run_dir: Path, stage_json: Path, stage_markdown: Path, validati
             stage["attempt"],
             state["runtime"]["contract_version"],
         )
-        errors.extend(_validate_stage_context(run_dir, state, stage, value))
+        if not errors:
+            errors.extend(_validate_stage_context(run_dir, state, stage, value))
         if errors:
             _set_status(state, "failed")
             stage["status"] = "failed"
@@ -1993,6 +2094,8 @@ def begin_execution_lease(
         state = load_state(run_dir, for_update=True)
         if state["status"] in {"completed", "stopped", "failed", "blocked"}:
             raise ValueError(f"Cannot begin execution while run status is {state['status']}.")
+        if state["status"] == "revising" and kind != "lineage":
+            raise ValueError(f"Only lineage may be rebuilt while run status is {state['status']}.")
         active = [
             item
             for item in state.get("execution_leases", [])
@@ -2064,6 +2167,8 @@ def _validate_execution_lease_locked(run_dir: Path, state: dict[str, Any], lease
     if _lease_expired(lease):
         raise ValueError("Execution lease expired before publication.")
     allowed_statuses = {"running", "finalizing"}
+    if lease["kind"] == "lineage":
+        allowed_statuses.add("revising")
     if lease["kind"] == "charts":
         allowed_statuses.add("awaiting_user_confirmation")
     if state["status"] not in allowed_statuses:
@@ -2553,14 +2658,14 @@ def _invalidate_derived_artifacts(state: dict[str, Any], affected: set[str], rea
     affected_roles = {
         stage["role"]
         for stage in state["stages"]
-        if stage["stage_id"] in affected
+        if stage["stage_id"] in affected and stage.get("artifact")
     }
     kinds: set[str] = {"run_summary"}
     if affected_roles & {"growth-business", "growth-metrics", "growth-sql"}:
         kinds.update({"query_manifest", "query_result", "result_profile"})
     if affected_roles & {"growth-business", "growth-metrics", "growth-sql", "growth-insight", "growth-visualization"}:
         kinds.update({"chart_specs", "chart_manifest", "chart_png", "chart_html"})
-    if affected_roles & {"growth-metrics", "growth-sql", "growth-insight", "growth-visualization", "growth-review", "growth-report"}:
+    if affected_roles & {"growth-metrics", "growth-sql", "growth-insight", "growth-visualization", "growth-report"}:
         kinds.update({"metric_lineage", "metric_lineage_latest"})
     invalidation_id = new_id("invalidation")
     invalidated: list[str] = []

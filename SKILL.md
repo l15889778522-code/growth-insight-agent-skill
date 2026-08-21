@@ -80,8 +80,10 @@ For the single pending role:
    - allowed source-data paths;
    - its stage Schema path;
    - any user revision request.
-   - for Review, the latest registered query manifests and profiles, including their artifact IDs and hashes.
+   - for Review, the immutable `review-input-bundle.json`, which binds approved upstream decisions plus the latest registered lineage, query manifests, result profiles, result files, and chart manifest when present.
 4. Require one JSON object and no prose, Markdown fence, file write, SQL execution, or next-Agent action.
+   The v1.2 common fields are strict: `evidence` contains structured references with `artifact_id`, exact 64-character `sha256`, `selector_type`, and `selector_value`; `data_artifacts` contains objects with `artifact_id`, run-relative `path`, exact `sha256`, and `kind`; `lineage` contains objects; and `calculations` is `[]` unless a real calculation with structured evidence is present. Never emit `evidence_refs` as a replacement for top-level `evidence`, and never use strings in `data_artifacts`.
+   `confirmed_decisions` contains unique strings for decisions introduced or explicitly reaffirmed by the current stage. Do not require a child Agent to copy all upstream decisions; their authoritative inheritance is the hash-bound approved artifacts and, for Review, `review-input-bundle.json`. Do not record role instructions such as "do not write SQL" as business decisions.
 5. Wait for completion and capture the complete response as `raw-response.txt`.
 6. Preserve the native Codex Agent ID returned by the spawn tool. When available, register its resolved model and Token metadata; never estimate unavailable Token counts.
 7. Validate it with `<skill-root>/scripts/validate_stage_output.py`; the current run contract must match both `schema_version` and `agent_contract_version`. A legacy response cannot enter a v1.2 run even when its standalone legacy Schema is otherwise valid.
@@ -144,11 +146,13 @@ Any SQL, parameter, data source, dialect, timeout, row-limit, or result-byte-lim
 
 ## Review Rules
 
+- If the route contains an approved Metrics stage, build and register current metric lineage before starting Review. `start-stage` must reject Review before any Agent is spawned when lineage is absent or invalid.
 - Report requires an approved Review result of `PASS` or `PASS_WITH_RISKS`.
 - A Review-terminal route requires an approved Review result of `PASS` or `PASS_WITH_RISKS` and completes without Report publication.
 - `FAIL` must identify the earliest rollback stage and required fixes. `record-stage` creates a hash-bound `rollback-plan.json`; show it and wait for explicit rollback approval before revising that stage. Do not start Report.
 - Preserve all `PASS_WITH_RISKS` caveats in Report.
 - Require Review to copy the latest registered query-manifest quality warnings exactly; the deterministic runtime rejects omissions or paraphrases.
+- Require Review to fail the earliest responsible stage when a ratio denominator is narrowed by an unrelated breakdown, approved metrics are not mapped or explicitly unsupported, test-user handling is unstated, or a trend conclusion lacks the approved comparison-window coverage.
 - A downstream Agent must place disagreements with approved decisions in `conflicts`; it may not silently overwrite them.
 
 ## Single-Writer And Evidence Rules

@@ -23,7 +23,10 @@
                   "source_fields": {"type": "array", "items": {"type": "string"}},
                   "sql_expression": {"type": ["string", "null"]},
                   "result_column": {"type": ["string", "null"]},
-                  "supported": {"type": "boolean"}
+                  "supported": {"type": "boolean"},
+                  "calculation_grain": {"type": ["string", "null"]},
+                  "denominator_scope": {"type": ["string", "null"]},
+                  "exclusions": {"type": "array", "items": {"type": "string", "minLength": 1}}
                 }
               }
             },

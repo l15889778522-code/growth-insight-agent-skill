@@ -100,6 +100,11 @@
       "if": {"properties": {"schema_version": {"const": "1.2"}}},
       "then": {
         "properties": {
+          "confirmed_decisions": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+            "uniqueItems": true
+          },
           "evidence": {"type": "array", "items": {"$ref": "evidence-ref.schema.json"}},
           "calculations": {"type": "array", "items": {"$ref": "#/$defs/calculation"}}
         }

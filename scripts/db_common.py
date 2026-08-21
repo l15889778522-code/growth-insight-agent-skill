@@ -591,7 +591,13 @@ class MySQLAdapter:
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT table_name, column_name, column_type, is_nullable, column_key, column_default
+                    SELECT
+                        TABLE_NAME AS table_name,
+                        COLUMN_NAME AS column_name,
+                        COLUMN_TYPE AS column_type,
+                        IS_NULLABLE AS is_nullable,
+                        COLUMN_KEY AS column_key,
+                        COLUMN_DEFAULT AS column_default
                     FROM information_schema.columns
                     WHERE table_schema = DATABASE()
                     ORDER BY table_name, ordinal_position

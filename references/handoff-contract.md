@@ -39,10 +39,35 @@ role_payload
 - Return no prose or Markdown fence outside the JSON object.
 - Copy run metadata exactly from the orchestrator.
 - Include every array field, using `[]` when empty.
+- In contract 1.2, `confirmed_decisions` contains unique non-empty strings introduced or explicitly reaffirmed by the current stage. It is not a copy of every upstream decision and must not contain wrapper objects, role instructions, assumptions, or open questions. Approved upstream decisions remain authoritative through their immutable approved artifacts; Review additionally receives them in `review-input-bundle.json`.
 - Use `BLOCKED` with non-empty `required_next_inputs` when essential input is missing.
 - An unresolved conflict cannot return `PASS`.
 - Facts, calculations, and evidence must cite resolvable files, fields, or approved artifacts.
 - In contract 1.2, every evidence reference contains `artifact_id`, exact artifact `sha256`, `selector_type`, and `selector_value`. Supported selectors are file, JSON Pointer, CSV row/cell, stage field, query-manifest field, and registered calculation ID.
+- `evidence` is the common top-level field for these references. `evidence_refs` is only used inside role-specific observations, findings, and recommendations; it must use the same structured object, never a path-only string.
+- `data_artifacts` is not a list of paths. Every item is an object with `artifact_id`, run-relative `path`, exact `sha256`, and registered `kind`. `lineage` is a list of objects as defined by the role contract.
+- A minimal valid v1.2 reference looks like this (replace every placeholder with an exact supplied value; never emit placeholders):
+
+```json
+{
+  "evidence": [
+    {
+      "artifact_id": "<supplied-artifact-id>",
+      "sha256": "<64-hex-sha256>",
+      "selector_type": "file",
+      "selector_value": null
+    }
+  ],
+  "data_artifacts": [
+    {
+      "artifact_id": "<supplied-artifact-id>",
+      "path": "<run-relative-path>",
+      "sha256": "<64-hex-sha256>",
+      "kind": "<registered-kind>"
+    }
+  ]
+}
+```
 - A calculation contains a stable `calculation_id`, expression, structured input evidence references, output value, and precision metadata.
 - Metrics mirror their role payload and use unique stable IDs with deterministic version increments.
 - SQL field mappings identify each metric's source fields, SQL expression, and result column.
@@ -62,4 +87,4 @@ Before `record-stage`, the root records `agent-execution-receipt.json`. The rece
 
 After validation, `scripts/render_stage_report.py` creates Markdown. The JSON object, not the Markdown report, is passed to downstream Agents.
 
-For Review, the root also creates `review-input-bundle.json` in the active attempt directory. It is a hash-bound snapshot of approved upstream artifact identities and approved decisions. Review must use that exact bundle; the runtime rejects a missing, changed, or stale bundle.
+For Review, the root also creates `review-input-bundle.json` in the active attempt directory. It is a hash-bound snapshot of approved upstream artifact identities, approved decisions, and current supporting artifacts: metric lineage, query manifests, query results, result profiles, and the chart manifest when available. Review must use that exact bundle; the runtime rejects a missing, changed, or stale bundle. A Metrics route cannot start Review until current lineage exists.

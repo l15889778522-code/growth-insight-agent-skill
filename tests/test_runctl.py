@@ -300,6 +300,90 @@ def test_failed_review_creates_hash_bound_rollback_gate(approved_run) -> None:
     assert audit_run(run_dir) == []
 
 
+def test_review_with_metrics_requires_lineage_before_agent_start(approved_run) -> None:
+    run_dir, _ = approved_run(["growth-metrics", "growth-review"])
+    _run_stage(run_dir, "growth-metrics", "s01-metrics")
+    approve_pending(run_dir, "stage", "lineage-preflight-metrics")
+
+    with pytest.raises(ValueError, match="build lineage before starting Review"):
+        start_stage(run_dir, "s02-review")
+
+    state = load_state(run_dir)
+    assert state["status"] == "running"
+    assert state["pending_stage"] == "s02-review"
+    assert state["stages"][1]["attempt"] == 0
+
+
+def test_review_bundle_inherits_decisions_without_echoing_them(approved_run) -> None:
+    run_dir, _ = approved_run(["growth-metrics", "growth-review"])
+    start_stage(run_dir, "s01-metrics")
+    metrics_output = stage_output("growth-metrics", "test-run", "s01-metrics", 1)
+    metrics_output["confirmed_decisions"] = ["Use booked revenue as the core metric."]
+    materialize_stage(run_dir, metrics_output)
+    approve_pending(run_dir, "stage", "decision-bundle-metrics")
+    build(run_dir)
+
+    attempt = start_stage(run_dir, "s02-review")
+    bundle = json.loads((attempt / "review-input-bundle.json").read_text(encoding="utf-8"))
+    assert bundle["approved_decisions"][0]["decision"] == "Use booked revenue as the core metric."
+    assert any(item["kind"] == "metric_lineage_latest" for item in bundle["supporting_artifacts"])
+
+    review = stage_output("growth-review", "test-run", "s02-review", 1)
+    assert review["confirmed_decisions"] == []
+    materialize_stage(run_dir, review)
+    assert load_state(run_dir)["status"] == "awaiting_user_confirmation"
+
+
+def test_review_validation_retry_preserves_lineage_and_records_fail(approved_run) -> None:
+    run_dir, _ = approved_run(["growth-metrics", "growth-review", "growth-report"])
+    _run_stage(run_dir, "growth-metrics", "s01-metrics")
+    approve_pending(run_dir, "stage", "retry-lineage-metrics")
+    build(run_dir)
+    lineage_id = next(
+        item["artifact_id"]
+        for item in load_state(run_dir)["artifacts"]
+        if item.get("kind") == "metric_lineage_latest" and not item.get("superseded_by")
+    )
+
+    start_stage(run_dir, "s02-review")
+    invalid_review = stage_output(
+        "growth-review",
+        "test-run",
+        "s02-review",
+        1,
+        status="PASS_WITH_RISKS",
+        review_risks=["Lineage requires verification."],
+    )
+    invalid_review["role_payload"]["lineage_breaks"] = ["revenue_total:invented_break"]
+    with pytest.raises(ValueError, match="lineage_breaks must exactly match"):
+        materialize_stage(run_dir, invalid_review)
+
+    revise(run_dir, "s02-review", "Retry Review with the registered lineage.")
+    active_lineage = next(
+        item
+        for item in load_state(run_dir)["artifacts"]
+        if item.get("artifact_id") == lineage_id
+    )
+    assert not active_lineage.get("superseded_by")
+
+    attempt = start_stage(run_dir, "s02-review")
+    failed_review = stage_output(
+        "growth-review",
+        "test-run",
+        "s02-review",
+        int(attempt.name.removeprefix("attempt-")),
+        status="FAIL",
+    )
+    failed_review["role_payload"]["rollback_stage"] = "s01-metrics"
+    materialize_stage(run_dir, failed_review)
+
+    state = load_state(run_dir)
+    assert state["status"] == "failed"
+    assert state["pending_approval"]["approval_type"] == "rollback"
+    assert state["stages"][1]["artifact"]["stage_status"] == "FAIL"
+    assert audit_run(run_dir) == []
+
+
 def test_report_requires_post_report_lineage_before_finalization(approved_run) -> None:
     run_dir, _ = approved_run(["growth-metrics", "growth-review", "growth-report"])
     _run_stage(run_dir, "growth-metrics", "s01-metrics")

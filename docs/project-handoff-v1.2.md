@@ -617,3 +617,39 @@ v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布�
 2. 确认工作区只保留源代码、文档、评测证据和有意保留的发布元数据。
 3. `DONE`：本次整理提交已合并到 `main`；后续只需在管理员 PowerShell 中完成本地 ACL 保护目录清理。
 4. 发布与工作区记录一致后，再开始 v1.3。
+
+## 8.8 Instagram 完整 Skill smoke 后加固（2026-08-21）
+
+总体状态：代码与离线回归 `DONE`；真实 Agent/MySQL 修复后复验 `NOT_STARTED`；补丁发布 `NOT_STARTED`。
+
+本次真实 smoke 覆盖 Business、Metrics、SQL、Insight 和 Review，并独立验证了 Review 失败时 Report 返回 `BLOCKED`。Visualization 按用户要求未测试。smoke 暴露了两类问题：
+
+- 逻辑问题：活动用户分母被 `event_type` 分组缩小；已批准指标未全部映射到 SQL/结果/Insight；单日数据不足以证明趋势；测试用户排除策略缺失。
+- 流程问题：Review 重试错误失效上游指标血缘；Review 启动前未强制检查血缘；`confirmed_decisions` 允许对象但运行语义要求精确继承；Agent 被迫重复粘贴全部历史决策；Review 输入包未绑定全部当前支持证据。
+
+本轮已完成的代码加固：
+
+- `DONE`：SQL 阶段必须映射全部批准指标或明确列为不支持；受支持指标必须进入可执行查询。
+- `DONE`：SQL、Metrics、Insight、Review 角色规则增加分子/分母粒度、比较窗口覆盖、零值与缺失覆盖区分、测试用户处理要求。
+- `DONE`：v1.2 `confirmed_decisions` 统一为唯一非空字符串，只记录当前阶段新增或明确重申的决策；不再允许包装对象。
+- `DONE`：取消下游 Agent 重复抄写全部历史决策的要求。批准决策继续由批准产物继承，Review 由不可变输入包集中读取。
+- `DONE`：Review 输入包增加当前指标血缘、查询 manifest、查询结果、结果 profile 和图表 manifest 的路径及 SHA-256 绑定。
+- `DONE`：包含 Metrics 的路线在缺少当前有效血缘时，`start-stage` 在启动 Review Agent 前拒绝执行。
+- `DONE`：仅重试 Review 且 Review/Report 尚无产物时，不再误删上游血缘；需要时允许在 `revising` 状态重建血缘。
+- `DONE`：Review 合法输出 `FAIL` 后仍登记不可变 Review artifact，并创建哈希绑定的 rollback plan；正式 Report 继续被阻止。
+
+验证记录：
+
+- 针对性回归：`44 passed`。
+- 完整离线回归：`152 passed, 2 skipped`。
+- Python 编译检查：通过。
+- `git diff --check`：通过。
+- 跳过项仍为显式 opt-in 的外部环境测试；本轮没有消耗模型额度运行真实 Agent，也没有重新执行 MySQL 查询。
+
+仍需后续完成：
+
+1. 使用新的 SQL attempt 修复 period 级总体活跃用户分母，并重新走 SQL 审批与查询审批。
+2. 使用覆盖多个自然日的数据重新执行查询，确认 baseline、comparison、recent 均有完整覆盖。
+3. 重新运行 Insight 与 Review，验证不会把缺失期间转换为零值趋势，也不会遗漏已批准指标。
+4. Review 通过后再测试正式 Report；Visualization 仍需用户另行授权测试。
+5. 当前工作分支为 `agent/native-free-eval`，远端基线提交为 `ba2d9ab`。本节记录的是未提交工作区改动，不得写成已推送、已合并或已发布。

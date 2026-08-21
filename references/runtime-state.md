@@ -55,6 +55,8 @@ It also binds the maximum result size in bytes. Canonical actions are `confirm_r
 
 A failed Review writes `rollback-plan.json`. Its rollback approval binds the Review artifact, target artifact, required fixes, route revision, and plan file hash.
 
+Before Review starts on a route containing Metrics, the runtime requires exactly one active, hash-valid `metric_lineage_latest` artifact. The Review attempt receives a hash-bound input bundle containing approved stage identities, approved decision strings, and current supporting data/lineage artifacts. Review validation failure can be retried without invalidating lineage that did not depend on Review.
+
 ## Commands
 
 ```powershell

@@ -41,6 +41,6 @@ If a metric cannot be computed from available schema, keep it only with a visibl
 
 ## Quality
 
-Metrics must be business-relevant, SQL-verifiable, dimensionally decomposable, time-window aware, explicit about numerator and denominator, and explicit about exclusions.
+Metrics must be business-relevant, SQL-verifiable, dimensionally decomposable, time-window aware, explicit about numerator and denominator, and explicit about exclusions. For rates and retention, define numerator, denominator population, calculation grain, eligible windows, zero-denominator behavior, minimum data coverage, and whether test/internal/automated users are identifiable and excluded.
 
 For D7 retention, define cohort maturity and whether day seven means calendar-day difference or a 168-hour window.
