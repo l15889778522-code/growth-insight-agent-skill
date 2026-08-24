@@ -590,7 +590,7 @@ v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布�
 - `DONE`：PR #2 已合并到 `main`，合并提交为 `9af6098abf26a81a7e45ea25e173a27bb0735b81`。
 - `DONE`：整理提交通过 PR #3 已合并到 `main`，合并提交为 `7aa656b187679449bdb4980f4b62e4b6d9b5a311`。
 - `DONE`：GitHub Release `v1.2.2` 已发布：[v1.2.2 Release](https://github.com/l15889778522-code/growth-insight-agent-skill/releases/tag/v1.2.2)。
-- `DONE`：工作分支为 `agent/native-free-eval`，远端最新提交为 `8b35a1e6825979778506efb0f43965018686955c`。
+- `DONE`：工作分支为 `agent/native-free-eval`，远端最新提交为 `6e8fb7e`（`Harden review flow and SQL metric coverage`）。
 - `DONE`：GitHub Actions 运行 `31678867821` 的 9 项 Ubuntu、Windows、全新安装和 MySQL 8.4 检查全部通过。
 - `DONE`：最近一次本地完整回归记录为 `146 passed, 2 skipped`；本次整理没有启动新的模型评测。
 - `UNCHANGED`：`VERSION=1.2` 仍是运行合同版本；`v1.2.2` 是补丁发布，不引入新的运行合同版本。
@@ -606,16 +606,17 @@ v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布�
 
 - `DONE`：已增加 `.test-tmp-*/` 和 `tests/.artifacts/` 的 Git 忽略规则。
 - `DONE`：`.coverage` 已删除。
-- `DONE`：可访问的 `stages/`、`multi-agent-data-analysis-r02/` 和 `scripts/__pycache__/` 已删除。
-- `BLOCKED`：剩余 `.test-tmp-*`、`tests/.artifacts` 和 `.pytest_cache` 生成目录在本次 Codex 会话中因 Windows 拒绝访问且当前会话没有管理员令牌，未能物理删除。它们是测试生成物，不是源文件；下一次应在管理员 PowerShell 中清理后再做全新工作区检查。
+- `DONE`：`.test-tmp-*`、`tests/.artifacts`、`scripts/__pycache__/`、`tests/__pycache__/` 和过期的仓库级 `.codex/agents/` 已删除；个人级安装副本不受影响。
+- `PARTIAL`：`.pytest_cache/` 仍有 Windows ACL 锁定文件，待管理员权限清理。它是测试生成物，不是源文件。
 - `PRESERVE`：`multi-agent-data-analysis-runs/` 保存正式运行审计证据，不得删除。
+- `PRESERVE`：`artifacts/`、`tests/evals/` 和 `tests/evidence/` 保存可重放的发布与评测证据，不得作为缓存删除。
 - `PRESERVE`：`.venv/` 是本地运行环境，不属于本次清理目标。
 
 ### 发布后续顺序
 
-1. 在管理员 PowerShell 中删除被 ACL 保护的测试生成目录。
+1. 在管理员 PowerShell 中删除被 ACL 保护的 `.pytest_cache/`。
 2. 确认工作区只保留源代码、文档、评测证据和有意保留的发布元数据。
-3. `DONE`：本次整理提交已合并到 `main`；后续只需在管理员 PowerShell 中完成本地 ACL 保护目录清理。
+3. 本次清理完成并提交后，再决定是否将当前功能分支合并到 `main`；本地 ACL 清理不改变代码发布状态。
 4. 发布与工作区记录一致后，再开始 v1.3。
 
 ## 8.8 Instagram 完整 Skill smoke 后加固（2026-08-21）
@@ -652,4 +653,4 @@ v1.2 主实现已经位于 GitHub 功能分支；本轮新增的确定性发布�
 2. 使用覆盖多个自然日的数据重新执行查询，确认 baseline、comparison、recent 均有完整覆盖。
 3. 重新运行 Insight 与 Review，验证不会把缺失期间转换为零值趋势，也不会遗漏已批准指标。
 4. Review 通过后再测试正式 Report；Visualization 仍需用户另行授权测试。
-5. 当前工作分支为 `agent/native-free-eval`，远端基线提交为 `ba2d9ab`。本节记录的是未提交工作区改动，不得写成已推送、已合并或已发布。
+5. 当前工作分支为 `agent/native-free-eval`，代码加固已在远端提交 `6e8fb7e`；本节的后续 SQL 复验仍未完成，不得写成真实复验或新版本发布。
