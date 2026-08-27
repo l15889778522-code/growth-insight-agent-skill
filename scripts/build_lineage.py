@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from runctl import (
+    _review_supporting_artifacts,
     abort_execution_lease,
     begin_execution_lease,
     load_state,
@@ -197,6 +198,8 @@ def _build_with_lease(run_dir: Path, state: dict[str, Any], lease: dict[str, Any
                     "metric_version": metric["version"],
                     "definition_artifact": artifact.get("artifact_id") or stage_id,
                     "sql_expressions": [],
+                    "query_ids": [],
+                    "result_artifacts": [],
                     "result_columns": [],
                     "insight_evidence": [],
                     "chart_ids": [],
@@ -237,9 +240,29 @@ def _build_with_lease(run_dir: Path, state: dict[str, Any], lease: dict[str, Any
                     if metric_id in metrics:
                         metrics[metric_id]["recommendation_refs"].append(reference)
 
+    active_artifacts = [item for item in state.get("artifacts", []) if not item.get("superseded_by")]
+    active_by_kind: dict[str, list[dict[str, Any]]] = {}
+    for item in active_artifacts:
+        active_by_kind.setdefault(item.get("kind", ""), []).append(item)
+
+    # Validate every current query request before building lineage. This keeps
+    # a successful query event from being mistaken for a published result.
+    _review_supporting_artifacts(run_dir, state)
+    query_closures: list[dict[str, Any]] = []
+    for manifest_record in active_by_kind.get("query_manifest", []):
+        manifest_path = resolve_within(run_dir, manifest_record["path"])
+        manifest = load_json(manifest_path)
+        result_record = next(
+            item
+            for item in active_by_kind.get("query_result", [])
+            if item.get("path") == manifest.get("result_path")
+            and item.get("sha256") == manifest.get("result_sha256")
+        )
+        query_closures.append({"manifest": manifest, "result_record": result_record})
+
     result_artifacts = [
         item
-        for item in state.get("artifacts", [])
+        for item in active_artifacts
         if item.get("kind") in {"query_result", "user_result"} and not item.get("superseded_by")
     ]
     result_path: Path | None = None
@@ -258,7 +281,6 @@ def _build_with_lease(run_dir: Path, state: dict[str, Any], lease: dict[str, Any
                 raise ValueError("Registered result contains duplicate column names.")
             result_columns = set(header)
 
-    active_artifacts = [item for item in state.get("artifacts", []) if not item.get("superseded_by")]
     chart_manifests = [item for item in active_artifacts if item.get("kind") == "chart_manifest"]
     rendered_chart_ids: set[str] = set()
     if chart_manifests:
@@ -307,7 +329,29 @@ def _build_with_lease(run_dir: Path, state: dict[str, Any], lease: dict[str, Any
 
     for record in metrics.values():
         mapped_columns = set(record["result_columns"])
-        record["result_columns"] = sorted(column for column in result_columns if column in mapped_columns)
+        if query_closures:
+            record["result_columns"] = []
+            for closure in query_closures:
+                manifest = closure["manifest"]
+                if record["metric_id"] not in manifest.get("metric_ids", []):
+                    continue
+                available_columns = {item.get("name") for item in manifest.get("columns", [])}
+                record["query_ids"].append(manifest["query_id"])
+                record["result_artifacts"].append(
+                    {
+                        "artifact_id": closure["result_record"]["artifact_id"],
+                        "path": closure["result_record"]["path"],
+                        "sha256": closure["result_record"]["sha256"],
+                        "query_id": manifest["query_id"],
+                        "query_revision": manifest.get("query_revision") or closure["result_record"].get("metadata", {}).get("query_revision"),
+                    }
+                )
+                record["result_columns"].extend(column for column in mapped_columns if column in available_columns)
+            record["query_ids"] = _unique(record["query_ids"])
+            record["result_artifacts"] = _unique(record["result_artifacts"])
+            record["result_columns"] = sorted(set(record["result_columns"]))
+        else:
+            record["result_columns"] = sorted(column for column in result_columns if column in mapped_columns)
         for key in ("sql_expressions", "result_columns", "insight_evidence", "chart_ids", "recommendation_refs"):
             record[key] = _unique(record[key])
         if "growth-sql" in route_roles and not record["sql_expressions"]:
@@ -315,6 +359,8 @@ def _build_with_lease(run_dir: Path, state: dict[str, Any], lease: dict[str, Any
         record["chart_ids"] = [chart_id for chart_id in record["chart_ids"] if chart_id in rendered_chart_ids]
         if "growth-sql" in route_roles and not record["result_columns"]:
             record["breaks"].append("missing_result_column")
+        if query_closures and "growth-sql" in route_roles and not record["query_ids"]:
+            record["breaks"].append("missing_query_result")
         if "growth-insight" in route_roles and not record["insight_evidence"]:
             record["breaks"].append("missing_insight_evidence")
         if "growth-visualization" in route_roles and not record["chart_ids"]:

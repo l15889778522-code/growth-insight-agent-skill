@@ -416,6 +416,11 @@ def test_stage_report_formats_structured_evidence_refs() -> None:
     report = stage_output("growth-report", "test-run", "s06-report", 1, evidence_ref=reference)
     report["evidence"] = [reference]
     markdown = render_markdown(report)
-    expected = "query_result-123@aaaaaaaaaaaa#csv_cell={'row': 7, 'column': 'revenue_total'}"
+    assert "## 一句话结论" in markdown
+    assert "## 这对你的业务意味着什么" in markdown
+    assert "## 技术详情" in markdown
+    assert markdown.index("## 一句话结论") < markdown.index("## 技术详情")
+    expected = "证据编号：query_result-123；完整性校验码：" + "a" * 64
     assert markdown.count(expected) == 2
+    assert "数据行号：7；数据列：revenue_total" in markdown
     assert '"artifact_id": "query_result-123"' not in markdown

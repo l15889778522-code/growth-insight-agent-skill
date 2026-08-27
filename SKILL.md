@@ -96,6 +96,8 @@ For the single pending role:
 
 For every role, including Report, show the stage summary and report link, ask for a stage command, and end the response. Do not start another role in the same response that first displays a stage result.
 
+Stage reports must be understandable to a reader without coding or database experience. Render only the current Agent's content as plain-language sections; do not concatenate upstream reports or add new analytical claims. Keep the conclusion, business meaning, findings, risks, and confirmation sections. Preserve `role_payload` in the validated JSON for handoff, validation, and audit, but never print the raw object, internal field names, JSON, code blocks, or inline-code formatting in user reports. Keep exact SQL in its structured field and query artifact, not in the prose report. Explain technical terms in plain Chinese; put evidence identifiers, hashes, and paths in a plainly labeled appendix. Report formatting never grants approval or changes a validated artifact.
+
 After a Report artifact is explicitly approved, enter `finalizing`, rebuild lineage, validate required chart artifacts, call `<skill-root>/scripts/runctl.py publish-final-report`, then call `<skill-root>/scripts/runctl.py finalize`. A route that ends at an approved `growth-review` may also enter `finalizing` and call `finalize` without publishing a Report; this creates an immutable `review_terminal` run summary and never creates final-report artifacts.
 
 If a validated output is `BLOCKED` or `FAIL`, show its missing input or failure reason and stop at that boundary. It is not eligible for stage approval.
@@ -140,13 +142,14 @@ When live results are required:
 4. Accept only `确认执行查询：<sql_sha256>` for that exact request.
 5. Include the approved maximum result size in bytes; any SQL, data source, dialect, timeout, row-limit, or byte-limit change requires a new approval.
 6. Record a query approval with canonical action `execute_query`, then run `<skill-root>/scripts/run_readonly_query.py`.
-7. Validate the manifest, result profile, and result hash before starting Insight.
+7. Validate that the manifest, result profile, result file, metric IDs, query revision, canonical SQL hash, and result hashes all match before starting Insight.
 
 Any SQL, parameter, data source, dialect, timeout, row-limit, or result-byte-limit change invalidates the query approval. If the user refuses, revise the SQL stage, propose a supplied-result or hypothesis-only route, wait for route confirmation, or terminate.
 
 ## Review Rules
 
 - If the route contains an approved Metrics stage, build and register current metric lineage before starting Review. `start-stage` must reject Review before any Agent is spawned when lineage is absent or invalid.
+- Every current query request must have exactly one matching immutable query manifest, result CSV, and result profile. A missing member of this chain blocks lineage and Review.
 - Report requires an approved Review result of `PASS` or `PASS_WITH_RISKS`.
 - A Review-terminal route requires an approved Review result of `PASS` or `PASS_WITH_RISKS` and completes without Report publication.
 - `FAIL` must identify the earliest rollback stage and required fixes. `record-stage` creates a hash-bound `rollback-plan.json`; show it and wait for explicit rollback approval before revising that stage. Do not start Report.

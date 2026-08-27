@@ -50,6 +50,8 @@ python scripts/run_readonly_query.py --run-dir <run> --db sqlite
 
 The runner refuses missing approvals, changed SQL hashes, mismatched physical data sources or dialects, non-read-only ASTs, changed execution limits, duplicate result-column names, and results above the approved byte limit. Decimal values are serialized as exact decimal text rather than binary floats.
 
+For v1.2, the saved SQL is the canonical `sqlglot-pretty-v1` form. The query request records both the source SQL fingerprint and the canonical SQL fingerprint. Approval, execution, manifest, result, and report lineage must all point to the same canonical fingerprint. A query request also records the metric IDs it serves; a Review cannot start when any current query request is missing its matching manifest, result CSV, or result profile.
+
 ## Query Outputs
 
 ```text
@@ -61,6 +63,8 @@ data/queries/<query_id>/revision-<n>/result/result-profile.json
 ```
 
 Result profiles use bounded samples, explicit truncation metadata, exact-to-bounded distinct counting, and deterministic warnings; they do not accumulate every value in memory. Each column also records observed value types, incompatible mixed-type status, non-finite numeric count, empty-string count, binary count, and timezone-aware versus timezone-naive datetime counts. `NaN` and positive/negative infinity are serialized as explicit text tokens so profile JSON remains standards-compliant and CSV output is deterministic.
+
+The human-facing stage report shows the conclusion, business meaning, key findings, risks, and confirmation request before the technical appendix. SQL, artifact IDs, file paths, and SHA-256 values remain available for audit but are not required for a non-technical reader to approve a stage.
 
 The query manifest warns deterministically about empty results, fewer than 30 returned rows, columns with at least 20% nulls, truncation, approximate distinct counts, incompatible types, non-finite numerics, empty strings, and mixed timezone awareness. These are Review inputs rather than automatic business verdicts. Duplicate-key and cohort-maturity checks require an explicitly declared key or cohort policy and are not inferred from column names.
 

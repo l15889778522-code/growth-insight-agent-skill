@@ -12,6 +12,8 @@ The final report is answer-first and includes:
 - Review decision, required caveats, and lineage gaps;
 - prioritized recommendations and next steps.
 
-The deterministic renderer uses the compact structure in `assets/final-report-template.md`. After the report is complete, rebuild lineage and call `runctl.py finalize`; finalization generates `final/run-summary.json` separately so operational metadata does not clutter the business narrative.
+The deterministic renderer follows the structure in `assets/final-report-template.md`. It renders the Report Agent's synthesis, not a concatenation of all earlier stage reports. The internal `role_payload` remains structured and unchanged, but the report contains ordinary Chinese prose rather than JSON, raw SQL, internal field labels, code blocks, or inline-code formatting. Keep the business-meaning and confirmation sections. Place identifiers, evidence locations, and hashes in the final plain-text technical appendix. Do not infer missing results or causes while formatting.
+
+After the user approves the Report artifact, rebuild lineage, publish the immutable final report, and call `runctl.py finalize`; finalization generates `final/run-summary.json` separately. Do not rewrite an already approved historical report to apply a new layout; create a separate preview or a new approved revision.
 
 Never hide Review caveats, invent results, claim an unexecuted query ran, include credentials, or include unnecessary user-level rows.

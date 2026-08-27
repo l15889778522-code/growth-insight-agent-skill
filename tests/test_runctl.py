@@ -314,6 +314,37 @@ def test_review_with_metrics_requires_lineage_before_agent_start(approved_run) -
     assert state["stages"][1]["attempt"] == 0
 
 
+def test_review_lineage_with_unresolved_breaks_cannot_pass(approved_run) -> None:
+    run_dir, _ = approved_run(["growth-metrics", "growth-visualization", "growth-review"])
+    _run_stage(run_dir, "growth-metrics", "s01-metrics")
+    approve_pending(run_dir, "stage", "lineage-break-preflight")
+    _run_stage(run_dir, "growth-visualization", "s02-visualization")
+    approve_pending(run_dir, "stage", "lineage-break-visualization")
+    build(run_dir)
+    attempt = start_stage(run_dir, "s03-review")
+    state = load_state(run_dir)
+    lineage = next(
+        json.loads((run_dir / item["path"]).read_text(encoding="utf-8"))
+        for item in state["artifacts"]
+        if item.get("kind") == "metric_lineage_latest" and not item.get("superseded_by")
+    )
+    review = stage_output(
+        "growth-review",
+        state["run_id"],
+        "s03-review",
+        int(attempt.name.removeprefix("attempt-")),
+        status="PASS_WITH_RISKS",
+        review_risks=["图表尚未生成。"],
+    )
+    review["role_payload"]["lineage_breaks"] = [
+        f"{item['metric_id']}:{break_code}"
+        for item in lineage["metrics"]
+        for break_code in item["breaks"]
+    ]
+    with pytest.raises(ValueError, match="cannot pass while metric lineage breaks remain"):
+        materialize_stage(run_dir, review)
+
+
 def test_review_bundle_inherits_decisions_without_echoing_them(approved_run) -> None:
     run_dir, _ = approved_run(["growth-metrics", "growth-review"])
     start_stage(run_dir, "s01-metrics")

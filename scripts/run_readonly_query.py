@@ -541,6 +541,9 @@ def _matching_approval(run_dir: Path, request: dict[str, Any]) -> dict[str, Any]
             query = approval.get("query") or {}
             if (
                 query.get("query_sha256") == request["sql_sha256"]
+                and query.get("source_sql_sha256") == request.get("source_sql_sha256")
+                and query.get("sql_canonicalization") == request.get("sql_canonicalization")
+                and query.get("metric_ids", []) == request.get("metric_ids", [])
                 and query.get("data_source_id") == request["data_source_id"]
                 and query.get("data_source_fingerprint") == request["data_source_fingerprint"]
                 and query.get("dialect") == request["dialect"]
@@ -669,10 +672,14 @@ def main() -> int:
         manifest = {
             "schema_version": "1.2",
             "query_id": request["query_id"],
+            "query_revision": request["revision"],
+            "metric_ids": request.get("metric_ids", []),
             "data_source_type": config.db_type,
             "data_source_id": config.data_source_id,
             "data_source_fingerprint": output.data_source_fingerprint,
             "sql_sha256": request["sql_sha256"],
+            "source_sql_sha256": request.get("source_sql_sha256"),
+            "sql_canonicalization": request.get("sql_canonicalization"),
             "dialect": request["dialect"],
             "started_at": started_at,
             "completed_at": completed_at,

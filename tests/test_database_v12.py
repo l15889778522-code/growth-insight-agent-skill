@@ -16,6 +16,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from build_lineage import build
 from conftest import ROOT, approve_pending, materialize_stage, stage_output
 from db_common import (
     MYSQL_IDENTITY_SQL,
@@ -166,6 +167,10 @@ def test_unicode_bytes_and_row_limit_are_exact_in_published_csv(approved_run, tm
     writer.writerows(rows)
 
     assert manifest["returned_rows"] == 2
+    assert manifest["query_revision"] == 1
+    assert manifest["metric_ids"] == ["revenue_total"]
+    assert manifest["sql_canonicalization"] == "sqlglot-pretty-v1"
+    assert len(manifest["source_sql_sha256"]) == 64
     assert manifest["truncated"] is True
     assert manifest["result_bytes"] == len(raw) == len(rebuilt.getvalue().encode("utf-8"))
     assert any(character.encode("utf-8") in raw for character in ("北", "上", "杭", "深"))
@@ -181,6 +186,20 @@ def test_unicode_bytes_and_row_limit_are_exact_in_published_csv(approved_run, tm
     bound_kinds = {item["kind"] for item in state["artifacts"] if item["artifact_id"] in bound_artifact_ids}
     assert lease["state"] == "completed"
     assert bound_kinds == {"query_request", "query_sql"}
+
+
+def test_lineage_rejects_a_prepared_query_without_published_result(approved_run, tmp_path: Path) -> None:
+    database = _create_values_database(tmp_path / "missing-result.db", [("2026-01-01", 1.0)])
+    run_dir = _prepare_approved_query(
+        approved_run,
+        tmp_path,
+        database,
+        "SELECT day, SUM(revenue) AS revenue_total FROM sales GROUP BY day",
+        max_rows=10,
+        max_result_bytes=4096,
+    )
+    with pytest.raises(ValueError, match="requires exactly one query manifest"):
+        build(run_dir)
 
 
 def test_oversized_single_row_aborts_lease_without_publication(approved_run, tmp_path: Path) -> None:

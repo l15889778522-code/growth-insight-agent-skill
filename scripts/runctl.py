@@ -133,8 +133,61 @@ def _review_supporting_artifacts(run_dir: Path, state: dict[str, Any]) -> list[d
         "result_profile",
         "chart_manifest",
     }
+    active_artifacts = [item for item in state.get("artifacts", []) if not item.get("superseded_by")]
+    active_by_kind: dict[str, list[dict[str, Any]]] = {}
+    for item in active_artifacts:
+        active_by_kind.setdefault(item.get("kind", ""), []).append(item)
+
+    # A prepared v1.2 query is not usable evidence until its manifest, result,
+    # and profile are all published under the same immutable query revision.
+    for request_record in active_by_kind.get("query_request", []):
+        request_path = resolve_within(run_dir, request_record.get("path", ""))
+        if not request_path.is_file() or sha256_file(request_path) != request_record.get("sha256"):
+            raise ValueError(f"Query request is missing or changed: {request_record.get('path')}")
+        request = load_json(request_path)
+        if request.get("schema_version") != CURRENT_CONTRACT_VERSION:
+            raise ValueError(f"Query request {request.get('query_id')} is not a current v1.2 request.")
+        query_id = request.get("query_id")
+        query_revision = request.get("revision")
+        if not request.get("metric_ids"):
+            raise ValueError(f"Query request {query_id!r} has no metric_ids mapping.")
+        manifests = [
+            item for item in active_by_kind.get("query_manifest", [])
+            if item.get("metadata", {}).get("query_id") == query_id
+            and item.get("metadata", {}).get("query_revision") == query_revision
+        ]
+        if len(manifests) != 1:
+            raise ValueError(f"Query {query_id!r} revision {query_revision} requires exactly one query manifest.")
+        manifest_record = manifests[0]
+        manifest_path = resolve_within(run_dir, manifest_record["path"])
+        if not manifest_path.is_file() or sha256_file(manifest_path) != manifest_record["sha256"]:
+            raise ValueError(f"Query manifest is missing or changed: {manifest_record['path']}")
+        manifest = load_json(manifest_path)
+        validate_schema(manifest, SCHEMA_DIR / "query-manifest.schema.json")
+        expected = {
+            "query_id": query_id,
+            "query_revision": query_revision,
+            "metric_ids": request.get("metric_ids"),
+            "sql_sha256": request.get("sql_sha256"),
+            "source_sql_sha256": request.get("source_sql_sha256"),
+            "sql_canonicalization": request.get("sql_canonicalization"),
+        }
+        if any(manifest.get(key) != value for key, value in expected.items()):
+            raise ValueError(f"Query manifest for {query_id!r} does not match its approved request.")
+        for kind, manifest_key in (("query_result", "result_path"), ("result_profile", "profile_path")):
+            matches = [
+                item
+                for item in active_by_kind.get(kind, [])
+                if item.get("path") == manifest.get(manifest_key)
+                and item.get("sha256") == manifest.get(manifest_key.replace("_path", "_sha256"))
+                and item.get("metadata", {}).get("query_id") == query_id
+                and item.get("metadata", {}).get("query_revision") == query_revision
+            ]
+            if len(matches) != 1:
+                raise ValueError(f"Query {query_id!r} revision {query_revision} requires one matching {kind} artifact.")
+
     records: list[dict[str, Any]] = []
-    for artifact in state.get("artifacts", []):
+    for artifact in active_artifacts:
         if artifact.get("kind") not in supported_kinds or artifact.get("superseded_by"):
             continue
         path = resolve_within(run_dir, artifact.get("path", ""))
@@ -1675,8 +1728,8 @@ def _validate_stage_context(run_dir: Path, state: dict[str, Any], stage: dict[st
                     errors.append("Review lineage_breaks must exactly match the registered metric lineage.")
             except ValueError as exc:
                 errors.append(str(exc))
-        if decision == "PASS" and payload.get("lineage_breaks"):
-            errors.append("Review cannot PASS while metric lineage breaks remain.")
+        if decision in {"PASS", "PASS_WITH_RISKS"} and payload.get("lineage_breaks"):
+            errors.append("Review cannot pass while metric lineage breaks remain; repair the earliest responsible stage.")
         rollback = payload.get("rollback_stage")
         if rollback is not None and rollback not in {item["stage_id"] for item in state["stages"]}:
             errors.append(f"Review rollback_stage is not in the current route: {rollback}")
@@ -1923,6 +1976,9 @@ def approve(
                 pending_query = state.get("pending_query") or {}
                 approval["query"] = {
                     "query_sha256": pending_query.get("query_sha256"),
+                    "source_sql_sha256": pending_query.get("source_sql_sha256"),
+                    "sql_canonicalization": pending_query.get("sql_canonicalization"),
+                    "metric_ids": pending_query.get("metric_ids", []),
                     "data_source_id": pending_query.get("data_source_id"),
                     "data_source_fingerprint": pending_query.get("data_source_fingerprint"),
                     "dialect": pending_query.get("dialect"),
@@ -2232,7 +2288,7 @@ def prepare_query(
     max_result_bytes: int,
     data_source_fingerprint: str,
 ) -> dict[str, Any]:
-    from sql_guard import validate_and_rewrite
+    from sql_guard import SQL_CANONICALIZATION_VERSION, validate_and_rewrite
 
     if not QUERY_ID_RE.fullmatch(query_id):
         raise ValueError("query_id must contain 2-128 letters, digits, dots, underscores, or hyphens.")
@@ -2270,10 +2326,16 @@ def prepare_query(
         final_sql_path = query_dir / "query.sql"
         atomic_write_text(final_sql_path, result.sql)
         sql_hash = sha256_file(final_sql_path)
+        metric_ids = sorted({str(item) for item in proposal.get("metric_ids", []) if str(item).strip()})
+        if not metric_ids:
+            raise ValueError(f"Approved SQL query {query_id!r} must declare at least one metric_id.")
         fingerprint = {
             "query_id": query_id,
             "revision": revision,
             "sql_sha256": sql_hash,
+            "source_sql_sha256": sha256_bytes(raw_sql.encode("utf-8")),
+            "sql_canonicalization": SQL_CANONICALIZATION_VERSION,
+            "metric_ids": metric_ids,
             "data_source_id": data_source_id,
             "data_source_fingerprint": data_source_fingerprint.lower(),
             "dialect": dialect,
@@ -2317,6 +2379,9 @@ def prepare_query(
             "subject_revision": revision,
             "subject_sha256": request["subject_sha256"],
             "query_sha256": sql_hash,
+            "source_sql_sha256": fingerprint["source_sql_sha256"],
+            "sql_canonicalization": SQL_CANONICALIZATION_VERSION,
+            "metric_ids": metric_ids,
             "data_source_id": data_source_id,
             "data_source_fingerprint": data_source_fingerprint.lower(),
             "dialect": dialect,
@@ -2378,7 +2443,11 @@ def record_query_result(
             validate_schema(profile, SCHEMA_DIR / "result-profile.schema.json")
             expected_manifest = {
                 "query_id": pending.get("subject_id"),
+                "query_revision": pending.get("subject_revision"),
+                "metric_ids": pending.get("metric_ids"),
                 "sql_sha256": pending.get("query_sha256"),
+                "source_sql_sha256": pending.get("source_sql_sha256"),
+                "sql_canonicalization": pending.get("sql_canonicalization"),
                 "data_source_id": pending.get("data_source_id"),
                 "data_source_fingerprint": pending.get("data_source_fingerprint"),
                 "dialect": pending.get("dialect"),

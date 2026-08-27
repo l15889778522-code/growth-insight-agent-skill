@@ -52,6 +52,7 @@ BLOCKED_FUNCTION_NAMES = {
 }
 
 MYSQL_EXECUTABLE_COMMENT = re.compile(r"/\*(?:!|M!)", re.IGNORECASE)
+SQL_CANONICALIZATION_VERSION = "sqlglot-pretty-v1"
 
 
 @dataclass

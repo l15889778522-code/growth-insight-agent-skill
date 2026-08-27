@@ -76,6 +76,8 @@ role_payload
 - Never claim a query ran without a query manifest and result hash.
 - `recommended_next_stage` is advisory and never authorizes a spawn.
 - Role-specific fields must satisfy `schemas/stages/<role>.schema.json`.
+- `summary` and human-facing text must be answer-first and understandable without coding or database knowledge. State what was done, what it means for the business, the main risk, and what needs confirmation before relying on technical fields such as SQL, hashes, or artifact paths.
+- Keep `role_payload` as structured JSON: it remains the source for validation, downstream handoff, revisions, and evidence tracking. Narrative strings must be ordinary prose without Markdown code fences or inline-code formatting. Preserve executable SQL and technical identifiers in their dedicated fields, not as substitutes for business explanations.
 
 ## Validation
 
@@ -86,5 +88,7 @@ Every failed attempt remains in its own attempt directory. Resuming creates a ne
 Before `record-stage`, the root records `agent-execution-receipt.json`. The receipt binds the native Agent ID when observable, role configuration hash, attempt, raw response hash, parsed JSON hash, timestamps, model metadata, and explicit missing-metadata reasons. `record-stage` rejects a missing, reused, overwritten, or mismatched receipt.
 
 After validation, `scripts/render_stage_report.py` creates Markdown. The JSON object, not the Markdown report, is passed to downstream Agents.
+
+The Markdown report shows the current role's work only. The renderer labels and groups that role's content in Chinese without dumping `role_payload`, JSON objects, raw SQL, or internal handoff field names. Business explanations and confirmation sections remain. Technical identifiers, file references, and hashes are presented as text in the appendix; the exact source data remains unchanged in the validated JSON. Empty optional sections may be omitted, but risks, caveats, uncertainty, and evidence must not be silently dropped. A failed or blocked stage must never offer approval, and a suggested next role is not an approved route transition.
 
 For Review, the root also creates `review-input-bundle.json` in the active attempt directory. It is a hash-bound snapshot of approved upstream artifact identities, approved decisions, and current supporting artifacts: metric lineage, query manifests, query results, result profiles, and the chart manifest when available. Review must use that exact bundle; the runtime rejects a missing, changed, or stale bundle. A Metrics route cannot start Review until current lineage exists.

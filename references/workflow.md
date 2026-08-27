@@ -35,6 +35,8 @@ For each stage:
 
 `BLOCKED` and `FAIL` are not approvable stage results. They move the run to a blocked or failed boundary for input, revision, or rollback.
 
+Rendered stage reports are answer-first and contain only the current role's work. The first sections explain what happened, its business meaning, the key risks, and what the user is being asked to confirm. The internal `role_payload` remains unchanged in JSON, while the report uses Chinese headings and prose, never JSON dumps, raw SQL, code blocks, or inline-code formatting. Exact SQL remains in run artifacts; hashes and paths are plain-text references in the technical appendix. Formatting must not hide caveats or make a failed/blocked stage appear approvable.
+
 Report is terminal. After its validated JSON and final Markdown are written, enter `finalizing`, rebuild required lineage, verify chart manifests, publish the immutable report, and call `runctl.py finalize`. A route ending at Review is also terminal after Review approval; call `runctl.py finalize` directly to create an immutable review-terminal summary without a final report.
 
 ## User Commands
@@ -64,12 +66,13 @@ SQL stage approved
   -> awaiting_query_confirmation
   -> user confirms exact SQL SHA-256
   -> deterministic query runner
-  -> manifest + CSV + profile
+  -> manifest + CSV + profile, bound to the same query revision and metric IDs
   -> start Insight under the stored SQL-stage approval
 ```
 
 Query confirmation is separate from SQL-stage confirmation. A changed SQL request requires a new query confirmation.
 The fingerprint also binds dialect, data-source label, non-secret physical source fingerprint, timeout, row limit, and maximum result bytes.
+The query manifest must match the approved canonical SQL fingerprint, source SQL fingerprint, query revision, and metric IDs. Every current query request must have one matching manifest, result CSV, and result profile before Review can start.
 
 ## Revision And Review
 
@@ -79,6 +82,7 @@ The fingerprint also binds dialect, data-source label, non-secret physical sourc
 - Review `FAIL` creates a hash-bound rollback plan. Only a later `approve_rollback` action routes back to the earliest responsible stage and invalidates completed descendants.
 - Retrying or revising Review does not invalidate metric lineage derived only from approved upstream stages. Revising Metrics, SQL, Insight, Visualization, or Report still invalidates affected lineage.
 - Report requires Review `PASS` or `PASS_WITH_RISKS`.
+- Review cannot pass while the current metric lineage contains an unresolved break. Missing query results, result columns, or chart mappings must be repaired or explicitly routed as a non-data terminal workflow.
 - A Review-terminal route requires Review `PASS` or `PASS_WITH_RISKS` and does not create a final report.
 
 ## Concurrency
