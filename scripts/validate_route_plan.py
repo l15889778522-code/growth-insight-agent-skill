@@ -13,6 +13,15 @@ from contracts import CURRENT_CONTRACT_VERSION
 from runtime_common import SCHEMA_DIR, atomic_write_json, load_json, schema_errors, sha256_json, utc_now
 
 
+PARALLEL_ELIGIBLE_ROLES = {
+    "growth-business",
+    "growth-metrics",
+    "growth-insight",
+    "growth-review",
+    "growth-visualization",
+}
+
+
 def _ancestors(stage_id: str, by_id: dict[str, dict[str, Any]]) -> set[str]:
     found: set[str] = set()
     pending = list(by_id[stage_id].get("depends_on", []))
@@ -35,6 +44,29 @@ def _validate_input_bindings(plan: dict[str, Any], errors: list[str], prefix: st
         errors.append(f"{prefix}input_bindings: input_name values must be unique.")
     if set(names) != set(provided):
         errors.append(f"{prefix}input_bindings must bind every provided input exactly once.")
+
+
+def validate_parallel_policy(stage: dict[str, Any], errors: list[str]) -> None:
+    policy = stage.get("parallel")
+    if policy is None or not isinstance(policy, dict):
+        return
+    enabled = policy.get("enabled")
+    max_agents = policy.get("max_agents")
+    merge_required = policy.get("merge_required")
+    stage_id = stage.get("stage_id", "<unknown>")
+    role = stage.get("role")
+    if enabled:
+        if max_agents != 2:
+            errors.append(f"{stage_id}: enabled stage-local parallelism must allow exactly 2 Agents.")
+        if merge_required is not True:
+            errors.append(f"{stage_id}: parallel branches must be merged before the stage can be recorded.")
+        if role not in PARALLEL_ELIGIBLE_ROLES:
+            errors.append(f"{stage_id}: {role} cannot use stage-local parallel Agents.")
+    else:
+        if max_agents != 1:
+            errors.append(f"{stage_id}: disabled parallelism must set max_agents to 1.")
+        if merge_required is not False:
+            errors.append(f"{stage_id}: disabled parallelism must set merge_required to false.")
 
 
 def validate_route(plan: dict[str, Any], require_executable: bool = False) -> tuple[list[str], list[str]]:
@@ -60,6 +92,7 @@ def validate_route(plan: dict[str, Any], require_executable: bool = False) -> tu
     for stage in stages:
         if not isinstance(stage, dict) or stage.get("stage_id") not in by_id:
             continue
+        validate_parallel_policy(stage, errors)
         for dependency in stage.get("depends_on", []):
             if dependency not in by_id:
                 errors.append(f"{stage['stage_id']}: unknown dependency {dependency}.")

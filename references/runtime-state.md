@@ -18,6 +18,8 @@ multi-agent-data-analysis-runs/<run_id>/
 
 All paths in state are relative to the run directory. The root and deterministic scripts are the only writers.
 
+New states record `workflow_mode` (`personal | strict`) and `approval_policy` (`key-gates | every-stage | test-auto`). Legacy v1.2 states without those optional fields behave as `strict` plus `every-stage`.
+
 ## Global States
 
 ```text
@@ -36,6 +38,8 @@ completed
 ```
 
 Stage states are `pending`, `running`, `validating`, `awaiting_user_confirmation`, `approved`, `revising`, `blocked`, `failed`, `stale`, `skipped`, and `completed`.
+
+A route stage may carry an optional `parallel` policy. When enabled, it authorizes at most two independent analysis branches inside that one stage; it does not create additional route stages or permit seven-way fan-out. The policy is copied into the run state so a route revision cannot silently change the scheduling boundary.
 
 ## Approval Objects
 
@@ -60,12 +64,16 @@ Before Review starts on a route containing Metrics, the runtime requires exactly
 ## Commands
 
 ```powershell
-python scripts/runctl.py init --runs-root <dir> --run-id <id> --request-file <request.json>
+python scripts/runctl.py init --runs-root <dir> --run-id <id> --request-file <request.json> --workflow-mode personal
 python scripts/runctl.py set-route --run-dir <run> --route-file <route.json>
 python scripts/runctl.py start-stage --run-dir <run> --stage-id <id>
+python scripts/runctl.py check-stage-parallel --run-dir <run> --stage-id <id> --branch-count 2 --branch-purpose "data quality" --branch-purpose "segment comparison"
 python scripts/runctl.py record-agent-runtime --run-dir <run> --stage-id <id> --thread-id <id> --model <model>
+python scripts/runctl.py prevalidate-stage --run-dir <run> --raw-response <raw-response.txt> --output-json <stage.json> --validation-report <validation.json>
 python scripts/runctl.py record-agent-receipt --run-dir <run> --stage-id <id> --raw-response <raw-response.txt> --stage-json <stage.json> --agent-id <id> --capture-method codex_tool_result
 python scripts/runctl.py record-stage --run-dir <run> --stage-json <stage.json> --stage-markdown <stage.md> --validation-report <validation.json>
+python scripts/runctl.py record-agent-closed --run-dir <run> --stage-id <id> --status closed
+python scripts/runctl.py auto-approve-stage --run-dir <run>
 python scripts/runctl.py approve ...
 python scripts/runctl.py revise --run-dir <run> --stage-id <id> --request <text>
 python scripts/runctl.py metric-edit --run-dir <run> --edit-file <metric-edit.json>
@@ -79,6 +87,8 @@ python scripts/runctl.py summary --run-dir <run>
 python scripts/runctl.py publish-final-report --run-dir <run>
 python scripts/runctl.py finalize --run-dir <run>
 ```
+
+CLI state output is compact by default. Use `runctl.py status --full` only for diagnosis, audit, or an explicit request for the complete state.
 
 ## Recovery
 

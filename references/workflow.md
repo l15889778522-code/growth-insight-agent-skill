@@ -1,6 +1,6 @@
 # Stateful Native-Agent Workflow
 
-The root task owns orchestration and artifacts. Specialist work runs in visible Codex native subagent threads, one at a time.
+The root task owns orchestration and artifacts. Main route stages run in visible Codex native subagent threads one at a time. A declared complex stage may use at most two independent branch Agents, then returns to one merged stage result. New runs default to `personal` plus `key-gates`; use `strict` plus `every-stage` for the legacy approval experience.
 
 ## New Run
 
@@ -11,8 +11,10 @@ request
   -> awaiting_route_confirmation
   -> user confirms exact route revision
   -> run one role
-  -> validate and render
-  -> awaiting_user_confirmation
+  -> complete schema and runtime-context prevalidation
+  -> record receipt, render, and register
+  -> close Agent thread
+  -> user gate or recorded personal-mode automatic approval
 ```
 
 The initial request creates and displays a route only. It does not start Business automatically.
@@ -22,16 +24,18 @@ The initial request creates and displays a route only. It does not start Busines
 For each stage:
 
 1. Verify every declared dependency is approved; skipped stages cannot remain as dependencies.
-2. Start one named custom Agent and create a new attempt directory.
-3. Pass exact approved JSON paths and hashes, never conversational memory alone.
-4. Require one JSON object matching `schemas/handoff.schema.json` and the role Schema.
-5. Save the raw response before parsing it.
-6. Allow one correction for validation errors.
-7. Record the native thread ID, resolved model, effort, elapsed time, and Token usage when available.
-8. Render Markdown from validated JSON.
-9. Register JSON, Markdown, validation-report hashes, and move passing work to `awaiting_user_confirmation`.
-10. Show the result and end the current response.
-11. Start at most one next role only after a later explicit user confirmation.
+2. Start one named custom Agent and create a new attempt directory. If the route stage has an enabled `parallel` policy, run `check-stage-parallel` and start no more than two independent branches inside this attempt.
+3. Pass exact approved JSON paths and hashes, never conversational memory alone. Every branch receives the same input hashes.
+4. Require one JSON object matching `schemas/handoff.schema.json` and the role Schema from each Agent.
+5. Save every raw Agent response before parsing it, and preserve branch identity and purpose in the attempt evidence.
+6. Merge independent branch results into one stage result without silently choosing between conflicts; then run `prevalidate-stage` so schema, evidence, input hashes, metric mappings, and Review inputs fail together before registration.
+7. Allow one correction for the complete validation error list and preserve the rejected response.
+8. Record the native thread ID, resolved model, effort, elapsed time, Token usage when available, and the execution receipt for each branch.
+9. Render Markdown from validated JSON and register JSON, Markdown, validation-report hashes.
+10. Close every native Agent thread and record the observed close result.
+11. In `key-gates`, auto-approve only Business, Insight, and Visualization. Metrics, SQL, Review, Report, and every query remain user gates.
+12. In `test-auto`, passing Agent stages may auto-approve, but query execution still requires an exact user approval.
+13. Strict mode always shows the result and waits for a later explicit stage confirmation.
 
 `BLOCKED` and `FAIL` are not approvable stage results. They move the run to a blocked or failed boundary for input, revision, or rollback.
 
@@ -87,4 +91,4 @@ The query manifest must match the approved canonical SQL fingerprint, source SQL
 
 ## Concurrency
 
-Only one role may be `running`. Read-heavy Agent work can be parallelized in other projects, but this Skill intentionally remains serial because every handoff requires user approval and downstream artifacts depend on exact versions.
+The route remains stage-serial: only one main stage may be `running`, and SQL execution, result publication, and final report publication never run as branches. A route stage may opt into two independent Agents only for bounded analysis work such as separate segments, independent hypotheses, or separate data-quality checks. Both branches must use the same approved input hashes, preserve separate responses, expose contradictions, and be merged before the stage gate. There is no seven-Agent fan-out.

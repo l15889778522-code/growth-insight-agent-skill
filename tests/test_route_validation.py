@@ -61,3 +61,31 @@ def test_stage_required_input_must_be_provided_or_produced_by_an_ancestor() -> N
     route["stages"][1]["depends_on"] = [route["stages"][0]["stage_id"]]
     errors, _ = validate_route(route, require_executable=True)
     assert errors == []
+
+
+def test_stage_parallel_policy_allows_two_independent_analysis_branches() -> None:
+    route = route_plan(["growth-insight"])
+    route["stages"][0]["parallel"] = {
+        "enabled": True,
+        "max_agents": 2,
+        "merge_required": True,
+    }
+    errors, warnings = validate_route(route, require_executable=True)
+    assert errors == []
+    assert warnings == []
+
+
+def test_stage_parallel_policy_rejects_unsupported_or_unbounded_branches() -> None:
+    route = route_plan(["growth-sql"])
+    route["stages"][0]["parallel"] = {
+        "enabled": True,
+        "max_agents": 2,
+        "merge_required": True,
+    }
+    errors, _ = validate_route(route)
+    assert any("cannot use stage-local parallel Agents" in error for error in errors)
+
+    route["stages"][0]["role"] = "growth-insight"
+    route["stages"][0]["parallel"]["max_agents"] = 3
+    errors, _ = validate_route(route)
+    assert any("maximum" in error or "exactly 2" in error for error in errors)

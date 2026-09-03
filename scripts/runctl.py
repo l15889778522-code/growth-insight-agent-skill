@@ -35,7 +35,7 @@ from runtime_common import (
     utc_now,
     validate_schema,
 )
-from validate_route_plan import validate_route
+from validate_route_plan import PARALLEL_ELIGIBLE_ROLES, validate_route
 from validate_stage_output import extract_single_json, validate_stage
 
 
@@ -68,6 +68,10 @@ APPROVAL_ACTIONS = {
     "query": "execute_query",
     "rollback": "approve_rollback",
 }
+
+WORKFLOW_MODES = {"personal", "strict"}
+APPROVAL_POLICIES = {"key-gates", "every-stage", "test-auto"}
+KEY_GATE_ROLES = {"growth-metrics", "growth-sql", "growth-review", "growth-report"}
 
 
 def _agent_settings() -> tuple[dict[str, str], dict[str, str | None], dict[str, dict[str, Any]]]:
@@ -451,9 +455,23 @@ def _commit(run_dir: Path, state: dict[str, Any], event_type: str, payload: dict
     return event
 
 
-def initialize_run(runs_root: Path, run_id: str, request: dict[str, Any], model_policy: str = "native-portable") -> Path:
+def initialize_run(
+    runs_root: Path,
+    run_id: str,
+    request: dict[str, Any],
+    model_policy: str = "native-portable",
+    workflow_mode: str = "personal",
+    approval_policy: str | None = None,
+) -> Path:
     if not RUN_ID_RE.fullmatch(run_id):
         raise ValueError("run_id must contain 3-128 letters, digits, dots, underscores, or hyphens.")
+    if workflow_mode not in WORKFLOW_MODES:
+        raise ValueError(f"Unsupported workflow mode: {workflow_mode}")
+    approval_policy = approval_policy or ("key-gates" if workflow_mode == "personal" else "every-stage")
+    if approval_policy not in APPROVAL_POLICIES:
+        raise ValueError(f"Unsupported approval policy: {approval_policy}")
+    if workflow_mode == "strict" and approval_policy != "every-stage":
+        raise ValueError("Strict mode requires the every-stage approval policy.")
     run_dir = runs_root.resolve() / run_id
     run_dir.mkdir(parents=True, exist_ok=False)
     for relative in ("stages", "data", "lineage", "charts", "final"):
@@ -470,6 +488,8 @@ def initialize_run(runs_root: Path, run_id: str, request: dict[str, Any], model_
         "revision": 0,
         "status": "initialized",
         "completion_kind": None,
+        "workflow_mode": workflow_mode,
+        "approval_policy": approval_policy,
         "runtime": {
             "kind": "codex_native",
             "model_policy": model_policy,
@@ -513,6 +533,8 @@ def initialize_run(runs_root: Path, run_id: str, request: dict[str, Any], model_
             "request_artifact_id": request_artifact_id,
             "request_file_sha256": request_file_sha256,
             "request_semantic_sha256": sha256_json(request),
+            "workflow_mode": workflow_mode,
+            "approval_policy": approval_policy,
         },
     )
     return run_dir
@@ -952,6 +974,7 @@ def set_route(run_dir: Path, route_file: Path) -> dict[str, Any]:
                     "attempt": old["attempt"] if old else 0,
                     "depends_on": item["depends_on"],
                     "input_hashes": reuse["input_hashes"] if can_reuse else {},
+                    "parallel": deepcopy(item.get("parallel")),
                     "artifact": old["artifact"] if can_reuse else None,
                     "runtime": old.get("runtime") if can_reuse else None,
                     "attempt_history": history,
@@ -1092,6 +1115,46 @@ def start_stage(run_dir: Path, stage_id: str) -> Path:
                 {"stage_id": stage_id, "attempt": stage["attempt"], "artifact": bundle_record},
             )
         return attempt_dir
+
+
+def check_stage_parallel(
+    run_dir: Path,
+    stage_id: str,
+    branch_count: int,
+    branch_purposes: list[str],
+) -> dict[str, Any]:
+    state = load_state(run_dir)
+    if state.get("current_stage") != stage_id:
+        raise ValueError(f"Stage {stage_id} is not the currently running stage.")
+    if state.get("status") != "running":
+        raise ValueError("Stage-local parallel Agents can only be checked while the stage is running.")
+    if state.get("pending_approval") or state.get("pending_query"):
+        raise ValueError("Resolve the pending approval or query before starting stage-local branches.")
+    stage = _find_stage(state, stage_id)
+    policy = stage.get("parallel")
+    if not isinstance(policy, dict) or policy.get("enabled") is not True:
+        raise ValueError(f"Stage {stage_id} does not allow stage-local parallel Agents.")
+    if stage.get("role") not in PARALLEL_ELIGIBLE_ROLES:
+        raise ValueError(f"Role {stage.get('role')} cannot use stage-local parallel Agents.")
+    if branch_count != 2 or branch_count > policy.get("max_agents", 0):
+        raise ValueError("Stage-local parallelism allows exactly two independent Agents at most.")
+    purposes = [purpose.strip() for purpose in branch_purposes if purpose.strip()]
+    if len(purposes) != branch_count or len(set(purposes)) != len(purposes):
+        raise ValueError("Each parallel Agent needs one distinct non-empty branch purpose.")
+    if policy.get("merge_required") is not True:
+        raise ValueError("Parallel branches must be merged before the stage can be recorded.")
+    return {
+        "allowed": True,
+        "stage_id": stage_id,
+        "role": stage["role"],
+        "attempt": stage["attempt"],
+        "max_agents": policy["max_agents"],
+        "branch_count": branch_count,
+        "branch_purposes": purposes,
+        "shared_input_hashes": deepcopy(stage.get("input_hashes", {})),
+        "merge_required": True,
+        "state_revision": state["revision"],
+    }
 
 
 def record_agent_runtime(
@@ -1300,6 +1363,40 @@ def _verify_agent_receipt(
     if receipt.get("missing_metadata") != expected_missing:
         raise ValueError("Agent receipt missing_metadata does not match the metadata actually present.")
     return receipt
+
+
+def record_agent_closed(run_dir: Path, stage_id: str, close_status: str) -> dict[str, Any]:
+    allowed = {"closed", "already_closed", "not_found", "failed"}
+    if close_status not in allowed:
+        raise ValueError("Unsupported Agent close status.")
+    with RunLock(run_dir):
+        state = load_state(run_dir, for_update=True)
+        stage = _find_stage(state, stage_id)
+        runtime = stage.get("runtime")
+        if not runtime or not runtime.get("receipt_path"):
+            raise ValueError("Agent closure can be recorded only after its execution receipt is saved.")
+        if runtime.get("closed_at"):
+            previous_status = runtime.get("close_status")
+            if previous_status == close_status:
+                return {
+                    "stage_id": stage_id,
+                    "attempt": runtime["attempt"],
+                    "closed_at": runtime["closed_at"],
+                    "close_status": runtime["close_status"],
+                }
+            if previous_status != "failed" or close_status == "failed":
+                raise ValueError("Agent closure is already recorded with a different status.")
+        runtime["closed_at"] = utc_now()
+        runtime["close_status"] = close_status
+        record = {
+            "stage_id": stage_id,
+            "attempt": runtime["attempt"],
+            "agent_id": runtime.get("agent_id"),
+            "closed_at": runtime["closed_at"],
+            "close_status": close_status,
+        }
+        _commit(run_dir, state, "agent_thread_closed", record)
+        return record
 
 
 def _load_current_role_output(run_dir: Path, state: dict[str, Any], role: str) -> dict[str, Any] | None:
@@ -1764,6 +1861,61 @@ def _validate_stage_context(run_dir: Path, state: dict[str, Any], stage: dict[st
     return errors
 
 
+def prevalidate_stage_response(
+    run_dir: Path,
+    raw_response_path: Path,
+    output_json_path: Path,
+    validation_report_path: Path,
+) -> dict[str, Any]:
+    state = load_state(run_dir)
+    if state["status"] != "running" or not state.get("current_stage"):
+        raise ValueError("No running stage is available to prevalidate.")
+    stage = _find_stage(state, state["current_stage"])
+    attempt_dir = run_dir / "stages" / stage["stage_id"] / f"attempt-{stage['attempt']}"
+    raw_response_path = resolve_within(run_dir, raw_response_path)
+    output_json_path = resolve_within(run_dir, output_json_path)
+    validation_report_path = resolve_within(run_dir, validation_report_path)
+    for path in (raw_response_path, output_json_path, validation_report_path):
+        if path.parent != attempt_dir.resolve():
+            raise ValueError("Stage prevalidation files must remain in the active attempt directory.")
+    if not raw_response_path.is_file():
+        raise ValueError(f"Raw Agent response does not exist: {raw_response_path}")
+
+    value: dict[str, Any] | None
+    errors: list[str]
+    try:
+        value = extract_single_json(raw_response_path.read_text(encoding="utf-8"))
+        errors = validate_stage(
+            value,
+            stage["role"],
+            state["run_id"],
+            stage["stage_id"],
+            stage["attempt"],
+            state["runtime"]["contract_version"],
+        )
+        if not errors:
+            errors.extend(_validate_stage_context(run_dir, state, stage, value))
+    except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
+        value = None
+        errors = [str(exc)]
+
+    report = {
+        "schema_version": CURRENT_CONTRACT_VERSION,
+        "valid": not errors,
+        "role": stage["role"],
+        "checked_at": utc_now(),
+        "stage_sha256": sha256_json(value) if value is not None else None,
+        "errors": errors,
+        "validation_scope": "schema-and-runtime-context",
+    }
+    atomic_write_json(validation_report_path, report)
+    if value is not None and not errors:
+        atomic_write_json(output_json_path, value)
+    elif output_json_path.exists():
+        output_json_path.unlink()
+    return report
+
+
 def record_stage(run_dir: Path, stage_json: Path, stage_markdown: Path, validation_report: Path) -> dict[str, Any]:
     with RunLock(run_dir):
         state = load_state(run_dir, for_update=True)
@@ -2086,6 +2238,37 @@ def approve(
                 },
             )
         return approval
+
+
+def auto_approve_current_stage(run_dir: Path) -> dict[str, Any]:
+    state = load_state(run_dir)
+    mode = state.get("workflow_mode", "strict")
+    policy = state.get("approval_policy", "every-stage")
+    if mode != "personal" or policy == "every-stage":
+        raise ValueError("Automatic stage approval is available only in personal mode.")
+    pending = state.get("pending_approval") or {}
+    if pending.get("approval_type") != "stage":
+        raise ValueError("No stage is awaiting automatic approval.")
+    stage = _find_stage(state, pending["subject_id"])
+    if policy == "key-gates" and stage["role"] in KEY_GATE_ROLES:
+        raise ValueError(f"Role {stage['role']} is a required user confirmation gate.")
+    if not stage.get("artifact") or stage["artifact"].get("stage_status") not in {"PASS", "PASS_WITH_RISKS"}:
+        raise ValueError("Only a passing stage can be approved automatically.")
+    runtime = stage.get("runtime") or {}
+    if runtime.get("receipt_path") and runtime.get("close_status") not in {"closed", "already_closed", "not_found"}:
+        raise ValueError("Close the completed Agent thread before automatic approval.")
+    key = f"runtime-auto-{state['run_id']}-{stage['stage_id']}-{pending['subject_revision']}-{pending['subject_sha256'][:16]}"
+    return approve(
+        run_dir,
+        "stage",
+        pending["subject_id"],
+        pending["subject_revision"],
+        pending["subject_sha256"],
+        "approve_stage",
+        f"Personal workflow automatic approval for non-gate stage {stage['stage_id']}.",
+        key,
+        source_surface="runtime-auto",
+    )
 
 
 def _find_execution_lease(state: dict[str, Any], lease_id: str) -> dict[str, Any]:
@@ -3782,7 +3965,70 @@ def resume(run_dir: Path) -> dict[str, Any]:
         return state
 
 
-def _print(value: Any) -> None:
+def compact_state(state: dict[str, Any]) -> dict[str, Any]:
+    if not {"run_id", "revision", "status", "stages", "pending_stage"}.issubset(state):
+        raise ValueError("Value is not a run state.")
+    pending = state.get("pending_approval")
+    pending_query = state.get("pending_query")
+    current = next((item for item in state["stages"] if item["stage_id"] == state.get("current_stage")), None)
+    auto_approval_eligible = False
+    if pending and pending.get("approval_type") == "stage" and state.get("workflow_mode", "strict") == "personal":
+        pending_stage = _find_stage(state, pending["subject_id"])
+        policy = state.get("approval_policy", "every-stage")
+        auto_approval_eligible = policy == "test-auto" or (
+            policy == "key-gates" and pending_stage["role"] not in KEY_GATE_ROLES
+        )
+    return {
+        "run_id": state["run_id"],
+        "revision": state["revision"],
+        "status": state["status"],
+        "workflow_mode": state.get("workflow_mode", "strict"),
+        "approval_policy": state.get("approval_policy", "every-stage"),
+        "route_id": state.get("route_id"),
+        "route_revision": state.get("route_revision"),
+        "current_stage": state.get("current_stage"),
+        "pending_stage": state.get("pending_stage"),
+        "pending_approval": deepcopy(pending),
+        "pending_query": {
+            key: pending_query.get(key)
+            for key in (
+                "subject_id",
+                "subject_revision",
+                "subject_sha256",
+                "query_sha256",
+                "data_source_id",
+                "dialect",
+                "timeout_seconds",
+                "max_rows",
+                "max_result_bytes",
+                "request_path",
+                "sql_path",
+                "approved",
+            )
+        } if pending_query else None,
+        "auto_approval_eligible": auto_approval_eligible,
+        "agent_close_pending": bool(
+            current
+            and current.get("runtime", {}).get("receipt_path")
+            and current.get("runtime", {}).get("close_status") not in {"closed", "already_closed", "not_found"}
+        ),
+        "stages": [
+            {
+                "stage_id": item["stage_id"],
+                "role": item["role"],
+                "status": item["status"],
+                "attempt": item["attempt"],
+                "stage_status": item.get("artifact", {}).get("stage_status") if item.get("artifact") else None,
+                "parallel": deepcopy(item.get("parallel")),
+            }
+            for item in state["stages"]
+        ],
+    }
+
+
+def _print(value: Any, *, full: bool = False) -> None:
+    if not full and isinstance(value, dict) and {"run_id", "revision", "status", "stages", "pending_stage"}.issubset(value):
+        value = compact_state(value)
     print(json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True))
 
 
@@ -3795,6 +4041,8 @@ def main() -> int:
     init_parser.add_argument("--run-id", required=True)
     init_parser.add_argument("--request-file", type=Path, required=True)
     init_parser.add_argument("--model-policy", choices=["native-portable", "native-explicit"], default="native-portable")
+    init_parser.add_argument("--workflow-mode", choices=sorted(WORKFLOW_MODES), default="personal")
+    init_parser.add_argument("--approval-policy", choices=sorted(APPROVAL_POLICIES))
 
     route_parser = sub.add_parser("set-route")
     route_parser.add_argument("--run-dir", type=Path, required=True)
@@ -3803,6 +4051,12 @@ def main() -> int:
     start_parser = sub.add_parser("start-stage")
     start_parser.add_argument("--run-dir", type=Path, required=True)
     start_parser.add_argument("--stage-id", required=True)
+
+    parallel_parser = sub.add_parser("check-stage-parallel")
+    parallel_parser.add_argument("--run-dir", type=Path, required=True)
+    parallel_parser.add_argument("--stage-id", required=True)
+    parallel_parser.add_argument("--branch-count", type=int, required=True)
+    parallel_parser.add_argument("--branch-purpose", action="append", required=True)
 
     runtime_parser = sub.add_parser("record-agent-runtime")
     runtime_parser.add_argument("--run-dir", type=Path, required=True)
@@ -3823,11 +4077,25 @@ def main() -> int:
     receipt_parser.add_argument("--output-tokens", type=int)
     receipt_parser.add_argument("--capture-method", choices=["root_cli", "codex_tool_result"], default="root_cli")
 
+    prevalidate_parser = sub.add_parser("prevalidate-stage")
+    prevalidate_parser.add_argument("--run-dir", type=Path, required=True)
+    prevalidate_parser.add_argument("--raw-response", type=Path, required=True)
+    prevalidate_parser.add_argument("--output-json", type=Path, required=True)
+    prevalidate_parser.add_argument("--validation-report", type=Path, required=True)
+
     record_parser = sub.add_parser("record-stage")
     record_parser.add_argument("--run-dir", type=Path, required=True)
     record_parser.add_argument("--stage-json", type=Path, required=True)
     record_parser.add_argument("--stage-markdown", type=Path, required=True)
     record_parser.add_argument("--validation-report", type=Path, required=True)
+
+    close_parser = sub.add_parser("record-agent-closed")
+    close_parser.add_argument("--run-dir", type=Path, required=True)
+    close_parser.add_argument("--stage-id", required=True)
+    close_parser.add_argument("--status", dest="close_status", choices=["closed", "already_closed", "not_found", "failed"], required=True)
+
+    auto_approve_parser = sub.add_parser("auto-approve-stage")
+    auto_approve_parser.add_argument("--run-dir", type=Path, required=True)
 
     approve_parser = sub.add_parser("approve")
     approve_parser.add_argument("--run-dir", type=Path, required=True)
@@ -3883,6 +4151,7 @@ def main() -> int:
 
     status_parser = sub.add_parser("status")
     status_parser.add_argument("--run-dir", type=Path, required=True)
+    status_parser.add_argument("--full", action="store_true")
 
     audit_parser = sub.add_parser("audit")
     audit_parser.add_argument("--run-dir", type=Path, required=True)
@@ -3910,12 +4179,21 @@ def main() -> int:
     try:
         if args.command == "init":
             request = load_json(args.request_file)
-            run_dir = initialize_run(args.runs_root, args.run_id, request, args.model_policy)
-            _print({"run_dir": str(run_dir), "state": load_state(run_dir)})
+            run_dir = initialize_run(
+                args.runs_root,
+                args.run_id,
+                request,
+                args.model_policy,
+                args.workflow_mode,
+                args.approval_policy,
+            )
+            _print({"run_dir": str(run_dir), "state": compact_state(load_state(run_dir))})
         elif args.command == "set-route":
             _print(set_route(args.run_dir, args.route_file))
         elif args.command == "start-stage":
             _print({"attempt_dir": str(start_stage(args.run_dir, args.stage_id))})
+        elif args.command == "check-stage-parallel":
+            _print(check_stage_parallel(args.run_dir, args.stage_id, args.branch_count, args.branch_purpose))
         elif args.command == "record-agent-runtime":
             _print(record_agent_runtime(args.run_dir, args.stage_id, args.thread_id, args.model, args.input_tokens, args.output_tokens))
         elif args.command == "record-agent-receipt":
@@ -3932,8 +4210,21 @@ def main() -> int:
                     args.capture_method,
                 )
             )
+        elif args.command == "prevalidate-stage":
+            report = prevalidate_stage_response(
+                args.run_dir,
+                args.raw_response,
+                args.output_json,
+                args.validation_report,
+            )
+            _print(report)
+            return 0 if report["valid"] else 2
         elif args.command == "record-stage":
             _print(record_stage(args.run_dir, args.stage_json, args.stage_markdown, args.validation_report))
+        elif args.command == "record-agent-closed":
+            _print(record_agent_closed(args.run_dir, args.stage_id, args.close_status))
+        elif args.command == "auto-approve-stage":
+            _print(auto_approve_current_stage(args.run_dir))
         elif args.command == "approve":
             _print(
                 approve(
@@ -3977,7 +4268,7 @@ def main() -> int:
         elif args.command == "resume":
             _print(resume(args.run_dir))
         elif args.command == "status":
-            _print(load_state(args.run_dir))
+            _print(load_state(args.run_dir), full=args.full)
         elif args.command == "audit":
             errors = audit_run(args.run_dir)
             _print({"valid": not errors, "errors": errors})

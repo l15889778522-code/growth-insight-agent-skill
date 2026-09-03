@@ -15,6 +15,16 @@
         "sha256": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"},
         "source": {"type": "string", "minLength": 1}
       }
+    },
+    "parallelPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "max_agents", "merge_required"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "max_agents": {"type": "integer", "minimum": 1, "maximum": 2},
+        "merge_required": {"type": "boolean"}
+      }
     }
   },
   "type": "object",
@@ -39,7 +49,8 @@
           "depends_on": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
           "required_inputs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
           "expected_outputs": {"type": "array", "items": {"type": "string"}, "minItems": 1, "uniqueItems": true},
-          "status": {"enum": ["pending", "skipped", "approved", "stale"]}
+          "status": {"enum": ["pending", "skipped", "approved", "stale"]},
+          "parallel": {"$ref": "#/$defs/parallelPolicy"}
         }
       }
     },

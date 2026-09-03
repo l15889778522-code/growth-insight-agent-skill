@@ -22,11 +22,24 @@ def test_custom_agents_are_native_read_only_contracts() -> None:
     paths = sorted((ROOT / "assets" / "custom-agents").glob("*.toml"))
     assert len(paths) == 7
     names = set()
+    expected_efforts = {
+        "growth-business": "medium",
+        "growth-metrics": "high",
+        "growth-sql": "max",
+        "growth-insight": "high",
+        "growth-visualization": "medium",
+        "growth-review": "high",
+        "growth-report": "high",
+    }
     for path in paths:
         parsed = tomllib.loads(path.read_text(encoding="utf-8"))
         names.add(parsed["name"])
         assert parsed["sandbox_mode"] == "read-only"
-        assert parsed["model_reasoning_effort"] in {"medium", "high"}
+        assert parsed["model_reasoning_effort"] == expected_efforts[parsed["name"]]
+        if parsed["name"] == "growth-sql":
+            assert parsed["model"] == "gpt-5.6-luna"
+        else:
+            assert "model" not in parsed
         assert "model_provider" not in parsed
         assert "deepseek" not in path.read_text(encoding="utf-8").lower()
         assert "agent_contract_version" in parsed["developer_instructions"]

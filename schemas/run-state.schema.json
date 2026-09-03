@@ -119,6 +119,8 @@
         "provenance_trust_level": {"type": ["string", "null"], "enum": [null, "self_asserted", "host_observed", "host_signed"]},
         "capture_method": {"type": ["string", "null"], "enum": [null, "root_cli", "codex_tool_result", "migration"]},
         "missing_metadata": {"type": "array", "items": {"enum": ["agent_id", "model", "token_usage"]}, "uniqueItems": true}
+        ,"closed_at": {"type": ["string", "null"], "format": "date-time"}
+        ,"close_status": {"type": ["string", "null"], "enum": [null, "closed", "already_closed", "not_found", "failed"]}
       }
     },
     "executionLease": {
@@ -170,6 +172,8 @@
       ]
     },
     "completion_kind": {"type": ["string", "null"], "enum": ["review_terminal", "report", null]},
+    "workflow_mode": {"enum": ["personal", "strict"]},
+    "approval_policy": {"enum": ["key-gates", "every-stage", "test-auto"]},
     "runtime": {
       "type": "object",
       "additionalProperties": false,
@@ -214,6 +218,16 @@
           "attempt": {"type": "integer", "minimum": 0},
           "depends_on": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
           "input_hashes": {"type": "object", "additionalProperties": {"type": "string", "pattern": "^[A-Fa-f0-9]{64}$"}},
+          "parallel": {
+            "type": ["object", "null"],
+            "additionalProperties": false,
+            "required": ["enabled", "max_agents", "merge_required"],
+            "properties": {
+              "enabled": {"type": "boolean"},
+              "max_agents": {"type": "integer", "minimum": 1, "maximum": 2},
+              "merge_required": {"type": "boolean"}
+            }
+          },
           "artifact": {
             "type": ["object", "null"],
             "additionalProperties": false,
